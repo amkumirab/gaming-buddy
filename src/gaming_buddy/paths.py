@@ -6,6 +6,10 @@ from pathlib import Path
 APP_NAME = "GamingBuddy"
 
 
+def asset_path(name: str) -> Path:
+    return Path(__file__).resolve().parent / "assets" / name
+
+
 def data_dir() -> Path:
     """Return the per-user data directory without creating it."""
     root = os.getenv("LOCALAPPDATA")

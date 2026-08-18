@@ -37,6 +37,9 @@ gaming-buddy = "gaming_buddy.app:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+gaming_buddy = ["assets/*.png", "assets/*.ico"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

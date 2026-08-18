@@ -139,11 +139,13 @@ class Dashboard(QMainWindow):
 
     def _build_tray(self) -> None:
         self.tray = QSystemTrayIcon(self)
-        icon = QIcon.fromTheme("applications-games")
+        icon = QApplication.windowIcon()
         if icon.isNull():
-            pixmap = QPixmap(32, 32)
-            pixmap.fill(Qt.GlobalColor.transparent)
-            icon = QIcon(pixmap)
+            icon = QIcon.fromTheme("applications-games")
+            if icon.isNull():
+                pixmap = QPixmap(32, 32)
+                pixmap.fill(Qt.GlobalColor.transparent)
+                icon = QIcon(pixmap)
         self.tray.setIcon(icon)
         self.tray.setToolTip("Gaming Buddy")
         menu = QMenu()

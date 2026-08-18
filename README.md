@@ -1,5 +1,9 @@
 # Gaming Buddy
 
+<p align="center">
+  <img src="src/gaming_buddy/assets/app-icon.png" alt="Gaming Buddy logo" width="180">
+</p>
+
 Gaming Buddy is a lightweight Windows overlay for saving notes and pinning cropped
 screenshots without leaving a game. This repository contains the first working prototype.
 
