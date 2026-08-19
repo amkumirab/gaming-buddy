@@ -28,6 +28,8 @@ game window. The prototype is designed for quick interaction and stores its data
 - Adjust overlay opacity
 - Switch pins into click-through mode
 - Organize cards by game name
+- Search saved cards by title, note text, or game
+- Mark important cards as favorites and filter the library
 - Persist everything locally in SQLite
 - Global shortcuts and a system tray menu
 - No code injection and no game-memory access

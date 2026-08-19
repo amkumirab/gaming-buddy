@@ -120,10 +120,19 @@ class Dashboard(QMainWindow):
         library_label.setObjectName("section")
         self.filter_current = QCheckBox("Current game only")
         self.filter_current.toggled.connect(self.refresh_cards)
+        self.filter_favorites = QCheckBox("Favorites")
+        self.filter_favorites.toggled.connect(self.refresh_cards)
         library_header.addWidget(library_label)
         library_header.addStretch(1)
+        library_header.addWidget(self.filter_favorites)
         library_header.addWidget(self.filter_current)
         layout.addLayout(library_header)
+
+        self.search_cards = QLineEdit()
+        self.search_cards.setPlaceholderText("Search titles, notes, and games…")
+        self.search_cards.setClearButtonEnabled(True)
+        self.search_cards.textChanged.connect(self.refresh_cards)
+        layout.addWidget(self.search_cards)
 
         self.card_list = QListWidget()
         self.card_list.itemDoubleClicked.connect(self._pin_selected)
@@ -277,9 +286,11 @@ class Dashboard(QMainWindow):
         if not hasattr(self, "card_list"):
             return
         game = self.game_input.text() if self.filter_current.isChecked() else None
+        query = self.search_cards.text()
         self.card_list.clear()
-        for card in self.store.list(game):
-            icon = "▣" if card.kind is CardKind.IMAGE else "◆"
+        for card in self.store.list(game, query, self.filter_favorites.isChecked()):
+            kind_icon = "▣" if card.kind is CardKind.IMAGE else "◆"
+            icon = f"★ {kind_icon}" if card.favorite else kind_icon
             game_label = card.game or "General"
             item = QListWidgetItem(f"{icon}  {card.title}\n     {game_label}")
             item.setData(Qt.ItemDataRole.UserRole, card.id)
@@ -302,16 +313,24 @@ class Dashboard(QMainWindow):
         if item is None:
             return
         self.card_list.setCurrentItem(item)
+        card = self._selected_card()
+        if card is None:
+            return
         menu = QMenu(self)
+        favorite_action = menu.addAction(
+            "Remove from favorites" if card.favorite else "Add to favorites"
+        )
+        menu.addSeparator()
         pin_action = menu.addAction("Pin card")
         delete_action = menu.addAction("Delete card")
         action = menu.exec(self.card_list.mapToGlobal(position))  # type: ignore[arg-type]
-        if action is pin_action:
+        if action is favorite_action:
+            self.store.update_favorite(card.id, not card.favorite)
+            self.refresh_cards()
+        elif action is pin_action:
             self._pin_selected(item)
         elif action is delete_action:
-            card = self._selected_card()
-            if card is not None:
-                self._delete_card(card)
+            self._delete_card(card)
 
     def _delete_card(self, card: Card) -> None:
         if card.id is None:

@@ -27,6 +27,7 @@ class Card:
     y: int = 80
     width: int = 320
     height: int = 220
+    favorite: bool = False
     created_at: str = ""
     updated_at: str = ""
 

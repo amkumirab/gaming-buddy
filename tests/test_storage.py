@@ -1,3 +1,5 @@
+import sqlite3
+
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.storage import CardStore
 
@@ -68,3 +70,71 @@ def test_list_returns_most_recent_first(tmp_path):
         )
 
         assert [card.id for card in store.list()] == [second.id, first.id]
+
+
+def test_search_and_favorite_filters(tmp_path):
+    with CardStore(tmp_path / "cards.sqlite3") as store:
+        puzzle = store.add(
+            Card(
+                id=None,
+                kind=CardKind.NOTE,
+                game="Control",
+                title="Luck puzzle",
+                content="Try the roulette wheel.",
+            )
+        )
+        build = store.add(
+            Card(
+                id=None,
+                kind=CardKind.NOTE,
+                game="Elden Ring",
+                title="Strength build",
+                content="Upgrade the greatsword.",
+            )
+        )
+
+        assert store.update_favorite(build.id, True)
+        assert store.get(build.id).favorite is True
+        assert [card.id for card in store.list(query="ROULETTE")] == [puzzle.id]
+        assert [card.id for card in store.list(query="elden")] == [build.id]
+        assert [card.id for card in store.list(favorites_only=True)] == [build.id]
+        assert store.list("Control", "strength") == []
+
+
+def test_existing_database_gets_favorite_column(tmp_path):
+    database = tmp_path / "legacy.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        """
+        CREATE TABLE cards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            game TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL DEFAULT '',
+            image_path TEXT NOT NULL DEFAULT '',
+            opacity REAL NOT NULL DEFAULT 0.88,
+            x INTEGER NOT NULL DEFAULT 80,
+            y INTEGER NOT NULL DEFAULT 80,
+            width INTEGER NOT NULL DEFAULT 320,
+            height INTEGER NOT NULL DEFAULT 220,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO cards (kind, game, title, content, created_at, updated_at)
+        VALUES ('note', 'Legacy Game', 'Old clue', 'Keep me', '2026-01-01', '2026-01-01')
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    with CardStore(database) as store:
+        cards = store.list()
+        assert len(cards) == 1
+        assert cards[0].title == "Old clue"
+        assert cards[0].favorite is False
+        assert store.update_favorite(cards[0].id, True)

@@ -30,13 +30,28 @@ class CardStore:
                 y INTEGER NOT NULL DEFAULT 80,
                 width INTEGER NOT NULL DEFAULT 320,
                 height INTEGER NOT NULL DEFAULT 220,
+                favorite INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
             """
         )
+        columns = {
+            str(row["name"])
+            for row in self._connection.execute("PRAGMA table_info(cards)").fetchall()
+        }
+        if "favorite" not in columns:
+            self._connection.execute(
+                "ALTER TABLE cards ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0"
+            )
         self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_cards_game_updated ON cards(game, updated_at DESC)"
+        )
+        self._connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cards_favorite_updated
+            ON cards(favorite DESC, updated_at DESC)
+            """
         )
         self._connection.commit()
 
@@ -46,8 +61,8 @@ class CardStore:
             """
             INSERT INTO cards (
                 kind, game, title, content, image_path, opacity,
-                x, y, width, height, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                x, y, width, height, favorite, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 card.kind.value,
@@ -60,6 +75,7 @@ class CardStore:
                 card.y,
                 max(160, card.width),
                 max(100, card.height),
+                int(card.favorite),
                 card.created_at,
                 card.updated_at,
             ),
@@ -68,16 +84,38 @@ class CardStore:
         card.id = int(cursor.lastrowid)
         return card
 
-    def list(self, game: str | None = None) -> list[Card]:
-        if game is None or not game.strip():
-            rows = self._connection.execute(
-                "SELECT * FROM cards ORDER BY updated_at DESC, id DESC"
-            ).fetchall()
-        else:
-            rows = self._connection.execute(
-                "SELECT * FROM cards WHERE game = ? ORDER BY updated_at DESC, id DESC",
-                (game.strip(),),
-            ).fetchall()
+    def list(
+        self,
+        game: str | None = None,
+        query: str | None = None,
+        favorites_only: bool = False,
+    ) -> list[Card]:
+        clauses: list[str] = []
+        parameters: list[object] = []
+        if game is not None and game.strip():
+            clauses.append("game = ?")
+            parameters.append(game.strip())
+        if query is not None and query.strip():
+            pattern = f"%{query.strip()}%"
+            clauses.append(
+                """
+                (title LIKE ? COLLATE NOCASE
+                 OR content LIKE ? COLLATE NOCASE
+                 OR game LIKE ? COLLATE NOCASE)
+                """
+            )
+            parameters.extend((pattern, pattern, pattern))
+        if favorites_only:
+            clauses.append("favorite = 1")
+
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self._connection.execute(
+            f"""
+            SELECT * FROM cards{where}
+            ORDER BY favorite DESC, updated_at DESC, id DESC
+            """,
+            parameters,
+        ).fetchall()
         return [self._row_to_card(row) for row in rows]
 
     def get(self, card_id: int) -> Card | None:
@@ -112,6 +150,14 @@ class CardStore:
         )
         self._connection.commit()
 
+    def update_favorite(self, card_id: int, favorite: bool) -> bool:
+        cursor = self._connection.execute(
+            "UPDATE cards SET favorite = ?, updated_at = ? WHERE id = ?",
+            (int(favorite), utc_now(), card_id),
+        )
+        self._connection.commit()
+        return cursor.rowcount > 0
+
     def delete(self, card_id: int) -> bool:
         cursor = self._connection.execute("DELETE FROM cards WHERE id = ?", (card_id,))
         self._connection.commit()
@@ -140,6 +186,7 @@ class CardStore:
             y=int(row["y"]),
             width=int(row["width"]),
             height=int(row["height"]),
+            favorite=bool(row["favorite"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
         )
