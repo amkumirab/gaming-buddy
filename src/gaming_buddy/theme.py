@@ -4,7 +4,7 @@ STYLESHEET = """
     font-size: 13px;
     color: #f4f1ff;
 }
-QMainWindow, QWidget#panel {
+QMainWindow, QWidget#panel, QDialog#imageViewer {
     background: #12101b;
 }
 QFrame#hero {

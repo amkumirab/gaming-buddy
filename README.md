@@ -21,9 +21,10 @@ game window. The prototype is designed for quick interaction and stores its data
 
 ## Prototype features
 
-- Capture a region of any screen and pin it above the game
+- Capture a region at the monitor's native pixel resolution and pin it above the game
 - Create, save, and pin quick text notes
 - Move and resize every pinned card
+- Open screenshots at full resolution with Fit, 100%, and zoom controls
 - Adjust overlay opacity
 - Switch pins into click-through mode
 - Organize cards by game name
@@ -64,7 +65,8 @@ python -m gaming_buddy
 2. Write a note and choose **Save** or **Pin note**.
 3. Choose **Capture area**, drag around a clue or map, and release.
 4. Drag pins by their header and resize them from the bottom-right corner.
-5. Enable **Click-through pins** so mouse input goes to the game.
+5. Double-click a pinned image to inspect the lossless original at full resolution.
+6. Enable **Click-through pins** so mouse input goes to the game.
 
 Captured images and the SQLite database are stored under:
 

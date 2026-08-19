@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -221,11 +221,11 @@ class Dashboard(QMainWindow):
             self.show_panel()
             QMessageBox.warning(self, "Capture failed", str(exc))
 
-    def _save_capture(self, pixmap: QPixmap) -> None:
+    def _save_capture(self, image: QImage) -> None:
         now = datetime.now(UTC).astimezone()
         timestamp = now.strftime("%Y%m%d-%H%M%S-%f")
         path = self.captures_dir / f"capture-{timestamp}.png"
-        if not pixmap.save(str(path), "PNG"):
+        if not image.save(str(path), "PNG", 100):
             self.show_panel()
             QMessageBox.warning(self, "Capture failed", "Could not save the selected image.")
             return
@@ -237,14 +237,16 @@ class Dashboard(QMainWindow):
             title=f"Capture · {now.strftime('%H:%M')}",
             image_path=str(path),
             opacity=self.opacity_slider.value() / 100,
-            width=max(240, min(520, pixmap.width())),
-            height=max(150, min(380, pixmap.height() + 45)),
+            width=max(240, min(520, image.width())),
+            height=max(150, min(380, image.height() + 45)),
         )
         self.store.add(card)
         self.show_pin(card)
         self.refresh_cards()
         self.show_panel()
-        self.statusBar().showMessage("Screenshot captured and pinned", 3000)
+        self.statusBar().showMessage(
+            f"Saved lossless PNG · {image.width()} × {image.height()} px", 3500
+        )
 
     def show_pin(self, card: Card) -> None:
         if card.id is None:

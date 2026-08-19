@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QCoreApplication
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import QApplication
 
 from gaming_buddy.dashboard import Dashboard
@@ -16,6 +16,9 @@ from gaming_buddy.theme import STYLESHEET
 def main() -> int:
     QCoreApplication.setApplicationName("Gaming Buddy")
     QCoreApplication.setOrganizationName("GamingBuddy")
+    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setStyleSheet(STYLESHEET)
