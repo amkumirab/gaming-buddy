@@ -28,6 +28,7 @@ class Card:
     width: int = 320
     height: int = 220
     favorite: bool = False
+    pinned: bool = False
     created_at: str = ""
     updated_at: str = ""
 

@@ -101,7 +101,41 @@ def test_search_and_favorite_filters(tmp_path):
         assert store.list("Control", "strength") == []
 
 
-def test_existing_database_gets_favorite_column(tmp_path):
+def test_pinned_workspace_survives_database_reopen(tmp_path):
+    database = tmp_path / "cards.sqlite3"
+    with CardStore(database) as store:
+        card = store.add(
+            Card(
+                id=None,
+                kind=CardKind.NOTE,
+                game="Game",
+                title="Persistent clue",
+                content="Restore this pin",
+                x=420,
+                y=180,
+                width=480,
+                height=260,
+            )
+        )
+        assert store.update_pinned(card.id, True)
+
+    with CardStore(database) as reopened:
+        pinned = reopened.list(pinned_only=True)
+        assert len(pinned) == 1
+        assert pinned[0].title == "Persistent clue"
+        assert pinned[0].pinned is True
+        assert (pinned[0].x, pinned[0].y, pinned[0].width, pinned[0].height) == (
+            420,
+            180,
+            480,
+            260,
+        )
+        assert reopened.update_pinned(pinned[0].id, False)
+        assert reopened.list(pinned_only=True) == []
+        assert len(reopened.list()) == 1
+
+
+def test_existing_database_gets_workspace_columns(tmp_path):
     database = tmp_path / "legacy.sqlite3"
     connection = sqlite3.connect(database)
     connection.execute(
@@ -137,4 +171,6 @@ def test_existing_database_gets_favorite_column(tmp_path):
         assert len(cards) == 1
         assert cards[0].title == "Old clue"
         assert cards[0].favorite is False
+        assert cards[0].pinned is False
         assert store.update_favorite(cards[0].id, True)
+        assert store.update_pinned(cards[0].id, True)

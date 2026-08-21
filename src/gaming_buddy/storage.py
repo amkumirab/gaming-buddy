@@ -31,6 +31,7 @@ class CardStore:
                 width INTEGER NOT NULL DEFAULT 320,
                 height INTEGER NOT NULL DEFAULT 220,
                 favorite INTEGER NOT NULL DEFAULT 0,
+                pinned INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -44,6 +45,10 @@ class CardStore:
             self._connection.execute(
                 "ALTER TABLE cards ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0"
             )
+        if "pinned" not in columns:
+            self._connection.execute(
+                "ALTER TABLE cards ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+            )
         self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_cards_game_updated ON cards(game, updated_at DESC)"
         )
@@ -51,6 +56,12 @@ class CardStore:
             """
             CREATE INDEX IF NOT EXISTS idx_cards_favorite_updated
             ON cards(favorite DESC, updated_at DESC)
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cards_pinned_updated
+            ON cards(pinned DESC, updated_at DESC)
             """
         )
         self._connection.commit()
@@ -61,8 +72,8 @@ class CardStore:
             """
             INSERT INTO cards (
                 kind, game, title, content, image_path, opacity,
-                x, y, width, height, favorite, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                x, y, width, height, favorite, pinned, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 card.kind.value,
@@ -76,6 +87,7 @@ class CardStore:
                 max(160, card.width),
                 max(100, card.height),
                 int(card.favorite),
+                int(card.pinned),
                 card.created_at,
                 card.updated_at,
             ),
@@ -89,6 +101,7 @@ class CardStore:
         game: str | None = None,
         query: str | None = None,
         favorites_only: bool = False,
+        pinned_only: bool = False,
     ) -> list[Card]:
         clauses: list[str] = []
         parameters: list[object] = []
@@ -107,12 +120,14 @@ class CardStore:
             parameters.extend((pattern, pattern, pattern))
         if favorites_only:
             clauses.append("favorite = 1")
+        if pinned_only:
+            clauses.append("pinned = 1")
 
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self._connection.execute(
             f"""
             SELECT * FROM cards{where}
-            ORDER BY favorite DESC, updated_at DESC, id DESC
+            ORDER BY pinned DESC, favorite DESC, updated_at DESC, id DESC
             """,
             parameters,
         ).fetchall()
@@ -158,6 +173,14 @@ class CardStore:
         self._connection.commit()
         return cursor.rowcount > 0
 
+    def update_pinned(self, card_id: int, pinned: bool) -> bool:
+        cursor = self._connection.execute(
+            "UPDATE cards SET pinned = ?, updated_at = ? WHERE id = ?",
+            (int(pinned), utc_now(), card_id),
+        )
+        self._connection.commit()
+        return cursor.rowcount > 0
+
     def delete(self, card_id: int) -> bool:
         cursor = self._connection.execute("DELETE FROM cards WHERE id = ?", (card_id,))
         self._connection.commit()
@@ -187,6 +210,7 @@ class CardStore:
             width=int(row["width"]),
             height=int(row["height"]),
             favorite=bool(row["favorite"]),
+            pinned=bool(row["pinned"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
         )

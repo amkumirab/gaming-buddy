@@ -44,13 +44,14 @@ class Dashboard(QMainWindow):
         self._really_quit = False
 
         self.setWindowTitle("Gaming Buddy")
-        self.setMinimumSize(430, 690)
-        self.resize(470, 760)
+        self.setMinimumSize(430, 730)
+        self.resize(470, 810)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self._build_ui()
         self._build_tray()
         self._restore_settings()
         self.refresh_cards()
+        QTimer.singleShot(0, self.restore_workspace)
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -115,6 +116,15 @@ class Dashboard(QMainWindow):
         self.click_through.toggled.connect(self.set_click_through)
         layout.addWidget(self.click_through)
 
+        workspace_controls = QHBoxLayout()
+        show_pins = QPushButton("Show saved pins")
+        show_pins.clicked.connect(self.show_all_pins)
+        hide_pins = QPushButton("Hide all pins")
+        hide_pins.clicked.connect(self.hide_all_pins)
+        workspace_controls.addWidget(show_pins)
+        workspace_controls.addWidget(hide_pins)
+        layout.addLayout(workspace_controls)
+
         library_header = QHBoxLayout()
         library_label = QLabel("SAVED CARDS")
         library_label.setObjectName("section")
@@ -162,10 +172,17 @@ class Dashboard(QMainWindow):
         show_action.triggered.connect(self.show_panel)
         capture_action = QAction("Capture area", menu)
         capture_action.triggered.connect(self.start_capture)
+        show_pins_action = QAction("Show saved pins", menu)
+        show_pins_action.triggered.connect(self.show_all_pins)
+        hide_pins_action = QAction("Hide all pins", menu)
+        hide_pins_action.triggered.connect(self.hide_all_pins)
         quit_action = QAction("Quit", menu)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
         menu.addAction(capture_action)
+        menu.addSeparator()
+        menu.addAction(show_pins_action)
+        menu.addAction(hide_pins_action)
         menu.addSeparator()
         menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
@@ -177,6 +194,7 @@ class Dashboard(QMainWindow):
         geometry = self.settings.value("window_geometry")
         if geometry:
             self.restoreGeometry(geometry)
+        self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
 
     def _on_game_changed(self, value: str) -> None:
         self.settings.setValue("game", value)
@@ -257,18 +275,57 @@ class Dashboard(QMainWindow):
             f"Saved lossless PNG · {image.width()} × {image.height()} px", 3500
         )
 
-    def show_pin(self, card: Card) -> None:
+    def show_pin(self, card: Card, *, persist: bool = True) -> None:
         if card.id is None:
             return
+        if persist:
+            self.store.update_pinned(card.id, True)
+            card.pinned = True
         existing = self.pins.get(card.id)
         if existing is not None:
             existing.show()
             existing.raise_()
+            if persist:
+                self.refresh_cards()
             return
-        pin = PinWidget(card, self._save_pin_layout, self._delete_card)
+        pin = PinWidget(card, self._save_pin_layout, self._unpin_card, self._delete_card)
         pin.set_click_through(self.click_through.isChecked())
         self.pins[card.id] = pin
+        self._save_pin_layout(card)
         pin.show()
+        if persist:
+            self.refresh_cards()
+
+    def restore_workspace(self) -> None:
+        restored = 0
+        for card in self.store.list(pinned_only=True):
+            self.show_pin(card, persist=False)
+            restored += 1
+        if restored:
+            self.statusBar().showMessage(f"Restored {restored} saved pin(s)", 3000)
+
+    def show_all_pins(self) -> None:
+        cards = self.store.list(pinned_only=True)
+        for card in cards:
+            self.show_pin(card, persist=False)
+        self.statusBar().showMessage(f"Showing {len(cards)} saved pin(s)", 2500)
+
+    def hide_all_pins(self) -> None:
+        for pin in self.pins.values():
+            pin.hide()
+        self.statusBar().showMessage("Pins hidden; workspace is still saved", 2500)
+
+    def _unpin_card(self, card: Card) -> None:
+        if card.id is None:
+            return
+        pin = self.pins.pop(card.id, None)
+        if pin is not None:
+            pin.close()
+            pin.deleteLater()
+        self.store.update_pinned(card.id, False)
+        card.pinned = False
+        self.refresh_cards()
+        self.statusBar().showMessage("Card unpinned and kept in the library", 2500)
 
     def _save_pin_layout(self, card: Card) -> None:
         if card.id is None:
@@ -290,11 +347,16 @@ class Dashboard(QMainWindow):
         self.card_list.clear()
         for card in self.store.list(game, query, self.filter_favorites.isChecked()):
             kind_icon = "▣" if card.kind is CardKind.IMAGE else "◆"
-            icon = f"★ {kind_icon}" if card.favorite else kind_icon
+            favorite_icon = "★ " if card.favorite else ""
+            pinned_icon = "● " if card.pinned else ""
+            icon = f"{pinned_icon}{favorite_icon}{kind_icon}"
             game_label = card.game or "General"
-            item = QListWidgetItem(f"{icon}  {card.title}\n     {game_label}")
+            workspace_label = " · Pinned" if card.pinned else ""
+            item = QListWidgetItem(f"{icon}  {card.title}\n     {game_label}{workspace_label}")
             item.setData(Qt.ItemDataRole.UserRole, card.id)
-            item.setToolTip("Double-click to pin")
+            item.setToolTip(
+                "Saved in the restored workspace" if card.pinned else "Double-click to pin"
+            )
             self.card_list.addItem(item)
 
     def _selected_card(self) -> Card | None:
@@ -321,14 +383,17 @@ class Dashboard(QMainWindow):
             "Remove from favorites" if card.favorite else "Add to favorites"
         )
         menu.addSeparator()
-        pin_action = menu.addAction("Pin card")
+        pin_action = menu.addAction("Unpin card" if card.pinned else "Pin card")
         delete_action = menu.addAction("Delete card")
         action = menu.exec(self.card_list.mapToGlobal(position))  # type: ignore[arg-type]
         if action is favorite_action:
             self.store.update_favorite(card.id, not card.favorite)
             self.refresh_cards()
         elif action is pin_action:
-            self._pin_selected(item)
+            if card.pinned:
+                self._unpin_card(card)
+            else:
+                self._pin_selected(item)
         elif action is delete_action:
             self._delete_card(card)
 
@@ -348,6 +413,7 @@ class Dashboard(QMainWindow):
         self.refresh_cards()
 
     def set_click_through(self, enabled: bool) -> None:
+        self.settings.setValue("click_through", enabled)
         for pin in self.pins.values():
             pin.set_click_through(enabled)
         message = "Pins are click-through" if enabled else "Pins are interactive"
@@ -386,6 +452,8 @@ class Dashboard(QMainWindow):
             )
 
     def quit_app(self) -> None:
+        for pin in self.pins.values():
+            pin.save_now()
         self._really_quit = True
         self.request_quit.emit()
         QApplication.quit()

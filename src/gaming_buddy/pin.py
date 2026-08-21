@@ -3,8 +3,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QMouseEvent, QPixmap, QResizeEvent, QShowEvent
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QAction,
+    QGuiApplication,
+    QMouseEvent,
+    QPixmap,
+    QResizeEvent,
+    QShowEvent,
+)
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -20,6 +27,33 @@ from PySide6.QtWidgets import (
 )
 
 from gaming_buddy.models import Card, CardKind
+
+
+def fit_geometry_to_screens(
+    requested: QRect,
+    screens: list[QRect],
+    primary: QRect | None = None,
+) -> QRect:
+    """Keep a restored pin fully visible after monitor or resolution changes."""
+    if not screens:
+        return QRect(requested)
+    target_primary = primary if primary in screens else screens[0]
+
+    def overlap_area(screen: QRect) -> int:
+        overlap = requested.intersected(screen)
+        return max(0, overlap.width()) * max(0, overlap.height())
+
+    target = max(screens, key=overlap_area)
+    if overlap_area(target) == 0:
+        target = target_primary
+
+    width = min(max(180, requested.width()), target.width())
+    height = min(max(110, requested.height()), target.height())
+    maximum_x = target.x() + target.width() - width
+    maximum_y = target.y() + target.height() - height
+    x = max(target.x(), min(requested.x(), maximum_x))
+    y = max(target.y(), min(requested.y(), maximum_y))
+    return QRect(x, y, width, height)
 
 
 class FullImageViewer(QDialog):
@@ -155,11 +189,13 @@ class PinWidget(QWidget):
         self,
         card: Card,
         on_layout_changed: Callable[[Card], None],
+        on_unpin: Callable[[Card], None],
         on_delete: Callable[[Card], None],
     ) -> None:
         super().__init__()
         self.card = card
         self._on_layout_changed = on_layout_changed
+        self._on_unpin = on_unpin
         self._on_delete = on_delete
         self._drag_origin: QPoint | None = None
         self._viewer: FullImageViewer | None = None
@@ -175,7 +211,17 @@ class PinWidget(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMinimumSize(180, 110)
-        self.setGeometry(card.x, card.y, card.width, card.height)
+        screen_geometries = [screen.availableGeometry() for screen in QGuiApplication.screens()]
+        primary_screen = QGuiApplication.primaryScreen()
+        primary_geometry = primary_screen.availableGeometry() if primary_screen else None
+        geometry = fit_geometry_to_screens(
+            QRect(card.x, card.y, card.width, card.height),
+            screen_geometries,
+            primary_geometry,
+        )
+        card.x, card.y = geometry.x(), geometry.y()
+        card.width, card.height = geometry.width(), geometry.height()
+        self.setGeometry(geometry)
         self.setWindowOpacity(card.opacity)
         self._build_ui()
 
@@ -232,11 +278,17 @@ class PinWidget(QWidget):
         layout.addLayout(grip_row)
 
     def set_click_through(self, enabled: bool) -> None:
+        was_visible = self.isVisible()
         self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, enabled)
-        self.show()
+        if was_visible:
+            self.show()
 
     def contextMenuEvent(self, event: object) -> None:
         menu = QMenu(self)
+        unpin = QAction("Unpin card", menu)
+        unpin.triggered.connect(lambda: self._on_unpin(self.card))
+        menu.addAction(unpin)
+        menu.addSeparator()
         if self.card.kind is CardKind.IMAGE and Path(self.card.image_path).is_file():
             view = QAction("View original resolution", menu)
             view.triggered.connect(self._open_original)
@@ -296,6 +348,10 @@ class PinWidget(QWidget):
     def _queue_save(self) -> None:
         if self.card.id is not None:
             self._save_timer.start()
+
+    def save_now(self) -> None:
+        self._save_timer.stop()
+        self._save_layout()
 
     def _save_layout(self) -> None:
         geometry = self.geometry()

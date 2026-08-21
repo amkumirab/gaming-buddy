@@ -30,6 +30,9 @@ game window. The prototype is designed for quick interaction and stores its data
 - Organize cards by game name
 - Search saved cards by title, note text, or game
 - Mark important cards as favorites and filter the library
+- Restore pinned cards, positions, sizes, and opacity after restarting
+- Temporarily show or hide all saved pins without deleting them
+- Keep restored pins visible when monitors or resolutions change
 - Persist everything locally in SQLite
 - Global shortcuts and a system tray menu
 - No code injection and no game-memory access
@@ -68,7 +71,8 @@ python -m gaming_buddy
 3. Choose **Capture area**, drag around a clue or map, and release.
 4. Drag pins by their header and resize them from the bottom-right corner.
 5. Double-click a pinned image to inspect the lossless original at full resolution.
-6. Enable **Click-through pins** so mouse input goes to the game.
+6. Use **Hide all pins** to clear the screen without losing the saved workspace.
+7. Enable **Click-through pins** so mouse input goes to the game.
 
 Captured images and the SQLite database are stored under:
 
