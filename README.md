@@ -34,7 +34,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Temporarily show or hide all saved pins without deleting them
 - Keep restored pins visible when monitors or resolutions change
 - Persist everything locally in SQLite
-- Global shortcuts and a system tray menu
+- Configurable global shortcuts and a system tray menu
 - No code injection and no game-memory access
 
 ## Shortcuts
@@ -44,6 +44,10 @@ game window. The prototype is designed for quick interaction and stores its data
 | `Ctrl+Shift+G` | Show or hide the control panel |
 | `Ctrl+Shift+S` | Capture a screen region |
 | `Ctrl+Shift+L` | Toggle click-through mode for all pins |
+
+Choose **Keyboard shortcuts…** in the control panel or tray menu to replace any default.
+Changes are saved locally and take effect immediately. Gaming Buddy prevents duplicate,
+empty, and modifier-free shortcuts.
 
 ## Run from source
 
@@ -73,6 +77,7 @@ python -m gaming_buddy
 5. Double-click a pinned image to inspect the lossless original at full resolution.
 6. Use **Hide all pins** to clear the screen without losing the saved workspace.
 7. Enable **Click-through pins** so mouse input goes to the game.
+8. Open **Keyboard shortcuts…** to personalize controls without restarting.
 
 Captured images and the SQLite database are stored under:
 
@@ -90,6 +95,7 @@ gaming-buddy/
 │   ├── capture.py      # Screen-region capture
 │   ├── pin.py          # Movable overlay cards
 │   ├── hotkeys.py      # Global keyboard shortcuts
+│   ├── shortcut_dialog.py # Shortcut settings dialog
 │   └── storage.py      # Local SQLite persistence
 ├── tests/              # Automated storage and path tests
 └── docs/               # Project preview assets

@@ -26,19 +26,25 @@ from PySide6.QtWidgets import (
 )
 
 from gaming_buddy.capture import SelectionOverlay, begin_capture
+from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.pin import PinWidget
+from gaming_buddy.shortcut_dialog import ShortcutDialog
 from gaming_buddy.storage import CardStore
 
 
 class Dashboard(QMainWindow):
     request_quit = Signal()
+    shortcut_editing_started = Signal()
+    shortcut_editing_cancelled = Signal()
+    shortcuts_changed = Signal(dict)
 
     def __init__(self, store: CardStore, captures_dir: Path) -> None:
         super().__init__()
         self.store = store
         self.captures_dir = captures_dir
         self.settings = QSettings("GamingBuddy", "GamingBuddy")
+        self.shortcuts = self._load_shortcuts()
         self.pins: dict[int, PinWidget] = {}
         self.capture_overlay: SelectionOverlay | None = None
         self._really_quit = False
@@ -112,7 +118,7 @@ class Dashboard(QMainWindow):
         controls.addWidget(self.opacity_slider, 1)
         layout.addLayout(controls)
 
-        self.click_through = QCheckBox("Click-through pins  (Ctrl+Shift+L)")
+        self.click_through = QCheckBox()
         self.click_through.toggled.connect(self.set_click_through)
         layout.addWidget(self.click_through)
 
@@ -124,6 +130,10 @@ class Dashboard(QMainWindow):
         workspace_controls.addWidget(show_pins)
         workspace_controls.addWidget(hide_pins)
         layout.addLayout(workspace_controls)
+
+        shortcuts_button = QPushButton("Keyboard shortcuts…")
+        shortcuts_button.clicked.connect(self.edit_shortcuts)
+        layout.addWidget(shortcuts_button)
 
         library_header = QHBoxLayout()
         library_label = QLabel("SAVED CARDS")
@@ -150,11 +160,12 @@ class Dashboard(QMainWindow):
         self.card_list.customContextMenuRequested.connect(self._library_menu)
         layout.addWidget(self.card_list, 1)
 
-        footer = QLabel("Ctrl+Shift+G panel  •  Ctrl+Shift+S capture  •  Double-click to pin")
-        footer.setObjectName("muted")
-        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        footer.setWordWrap(True)
-        layout.addWidget(footer)
+        self.shortcut_footer = QLabel()
+        self.shortcut_footer.setObjectName("muted")
+        self.shortcut_footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.shortcut_footer.setWordWrap(True)
+        layout.addWidget(self.shortcut_footer)
+        self._update_shortcut_labels()
 
     def _build_tray(self) -> None:
         self.tray = QSystemTrayIcon(self)
@@ -176,6 +187,8 @@ class Dashboard(QMainWindow):
         show_pins_action.triggered.connect(self.show_all_pins)
         hide_pins_action = QAction("Hide all pins", menu)
         hide_pins_action.triggered.connect(self.hide_all_pins)
+        shortcuts_action = QAction("Keyboard shortcuts…", menu)
+        shortcuts_action.triggered.connect(self.edit_shortcuts)
         quit_action = QAction("Quit", menu)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
@@ -183,6 +196,8 @@ class Dashboard(QMainWindow):
         menu.addSeparator()
         menu.addAction(show_pins_action)
         menu.addAction(hide_pins_action)
+        menu.addSeparator()
+        menu.addAction(shortcuts_action)
         menu.addSeparator()
         menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
@@ -195,6 +210,41 @@ class Dashboard(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
+
+    def _load_shortcuts(self) -> dict[str, str]:
+        saved = {
+            action: str(self.settings.value(f"shortcuts/{action}", default))
+            for action, default in DEFAULT_SHORTCUTS.items()
+        }
+        try:
+            return validate_shortcuts(saved)
+        except ValueError:
+            return DEFAULT_SHORTCUTS.copy()
+
+    def edit_shortcuts(self) -> None:
+        self.shortcut_editing_started.emit()
+        dialog = ShortcutDialog(self.shortcuts, self)
+        if not dialog.exec():
+            self.shortcut_editing_cancelled.emit()
+            return
+        self.shortcuts = validate_shortcuts(dialog.shortcuts())
+        for action, shortcut in self.shortcuts.items():
+            self.settings.setValue(f"shortcuts/{action}", shortcut)
+        self.settings.sync()
+        self._update_shortcut_labels()
+        self.shortcuts_changed.emit(self.shortcuts.copy())
+        self.statusBar().showMessage("Global shortcuts updated", 3000)
+
+    def _update_shortcut_labels(self) -> None:
+        panel = self.shortcuts["toggle_panel"]
+        capture = self.shortcuts["capture_area"]
+        click_through = self.shortcuts["toggle_click_through"]
+        if hasattr(self, "click_through"):
+            self.click_through.setText(f"Click-through pins  ({click_through})")
+        if hasattr(self, "shortcut_footer"):
+            self.shortcut_footer.setText(
+                f"{panel} panel  •  {capture} capture  •  Double-click to pin"
+            )
 
     def _on_game_changed(self, value: str) -> None:
         self.settings.setValue("game", value)
@@ -446,7 +496,7 @@ class Dashboard(QMainWindow):
             self.hide()
             self.tray.showMessage(
                 "Gaming Buddy is still running",
-                "Use Ctrl+Shift+G or the tray icon to bring it back.",
+                f"Use {self.shortcuts['toggle_panel']} or the tray icon to bring it back.",
                 QSystemTrayIcon.MessageIcon.Information,
                 2500,
             )

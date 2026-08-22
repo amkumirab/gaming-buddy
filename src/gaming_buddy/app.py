@@ -27,7 +27,7 @@ def main() -> int:
     base_dir, captures_dir = ensure_data_dirs()
     store = CardStore(base_dir / "gaming-buddy.sqlite3")
     dashboard = Dashboard(store, captures_dir)
-    hotkeys = GlobalHotkeys()
+    hotkeys = GlobalHotkeys(dashboard.shortcuts)
     hotkeys.toggle_panel.connect(dashboard.toggle_panel)
     hotkeys.capture_area.connect(dashboard.start_capture)
     hotkeys.toggle_click_through.connect(dashboard.toggle_click_through)
@@ -36,6 +36,9 @@ def main() -> int:
             f"Global shortcuts unavailable: {message}"
         )
     )
+    dashboard.shortcut_editing_started.connect(hotkeys.stop)
+    dashboard.shortcut_editing_cancelled.connect(hotkeys.start)
+    dashboard.shortcuts_changed.connect(hotkeys.update_shortcuts)
     dashboard.request_quit.connect(hotkeys.stop)
 
     hotkeys.start()
