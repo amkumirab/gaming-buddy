@@ -191,12 +191,18 @@ class PinWidget(QWidget):
         on_layout_changed: Callable[[Card], None],
         on_unpin: Callable[[Card], None],
         on_delete: Callable[[Card], None],
+        on_edit: Callable[[Card], None],
+        on_copy: Callable[[Card], None],
+        on_open_location: Callable[[Card], None],
     ) -> None:
         super().__init__()
         self.card = card
         self._on_layout_changed = on_layout_changed
         self._on_unpin = on_unpin
         self._on_delete = on_delete
+        self._on_edit = on_edit
+        self._on_copy = on_copy
+        self._on_open_location = on_open_location
         self._drag_origin: QPoint | None = None
         self._viewer: FullImageViewer | None = None
         self._save_timer = QTimer(self)
@@ -285,6 +291,20 @@ class PinWidget(QWidget):
 
     def contextMenuEvent(self, event: object) -> None:
         menu = QMenu(self)
+        edit = QAction("Edit card…", menu)
+        edit.triggered.connect(lambda: self._on_edit(self.card))
+        menu.addAction(edit)
+        copy = QAction(
+            "Copy image" if self.card.kind is CardKind.IMAGE else "Copy note text",
+            menu,
+        )
+        copy.triggered.connect(lambda: self._on_copy(self.card))
+        menu.addAction(copy)
+        if self.card.kind is CardKind.IMAGE:
+            open_location = QAction("Open file location", menu)
+            open_location.triggered.connect(lambda: self._on_open_location(self.card))
+            menu.addAction(open_location)
+        menu.addSeparator()
         unpin = QAction("Unpin card", menu)
         unpin.triggered.connect(lambda: self._on_unpin(self.card))
         menu.addAction(unpin)

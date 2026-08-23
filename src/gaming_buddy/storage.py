@@ -181,6 +181,18 @@ class CardStore:
         self._connection.commit()
         return cursor.rowcount > 0
 
+    def update_details(self, card_id: int, *, title: str, game: str, content: str) -> bool:
+        cursor = self._connection.execute(
+            """
+            UPDATE cards
+            SET title = ?, game = ?, content = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (title.strip(), game.strip(), content, utc_now(), card_id),
+        )
+        self._connection.commit()
+        return cursor.rowcount > 0
+
     def delete(self, card_id: int) -> bool:
         cursor = self._connection.execute("DELETE FROM cards WHERE id = ?", (card_id,))
         self._connection.commit()

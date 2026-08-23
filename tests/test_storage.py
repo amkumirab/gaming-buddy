@@ -60,6 +60,41 @@ def test_values_are_safely_clamped(tmp_path):
         assert loaded.height == 100
 
 
+def test_card_details_can_be_edited_without_losing_workspace_state(tmp_path):
+    with CardStore(tmp_path / "cards.sqlite3") as store:
+        card = store.add(
+            Card(
+                id=None,
+                kind=CardKind.NOTE,
+                game="Control",
+                title="Original clue",
+                content="Old text",
+                favorite=True,
+                pinned=True,
+                x=240,
+                y=160,
+            )
+        )
+
+        assert store.update_details(
+            card.id,
+            title="  Updated clue  ",
+            game="  Alan Wake 2  ",
+            content="New text",
+        )
+        updated = store.get(card.id)
+        assert updated is not None
+        assert (updated.title, updated.game, updated.content) == (
+            "Updated clue",
+            "Alan Wake 2",
+            "New text",
+        )
+        assert updated.favorite is True
+        assert updated.pinned is True
+        assert (updated.x, updated.y) == (240, 160)
+        assert not store.update_details(9999, title="Missing", game="Game", content="")
+
+
 def test_list_returns_most_recent_first(tmp_path):
     with CardStore(tmp_path / "cards.sqlite3") as store:
         first = store.add(

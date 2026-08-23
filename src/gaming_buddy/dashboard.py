@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QImage, QPixmap
+from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from gaming_buddy.capture import SelectionOverlay, begin_capture
+from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.pin import PinWidget
@@ -338,7 +339,15 @@ class Dashboard(QMainWindow):
             if persist:
                 self.refresh_cards()
             return
-        pin = PinWidget(card, self._save_pin_layout, self._unpin_card, self._delete_card)
+        pin = PinWidget(
+            card,
+            self._save_pin_layout,
+            self._unpin_card,
+            self._delete_card,
+            self._edit_card,
+            self._copy_card,
+            self._open_card_location,
+        )
         pin.set_click_through(self.click_through.isChecked())
         self.pins[card.id] = pin
         self._save_pin_layout(card)
@@ -429,6 +438,14 @@ class Dashboard(QMainWindow):
         if card is None:
             return
         menu = QMenu(self)
+        edit_action = menu.addAction("Edit card…")
+        copy_action = menu.addAction(
+            "Copy image" if card.kind is CardKind.IMAGE else "Copy note text"
+        )
+        open_location_action = None
+        if card.kind is CardKind.IMAGE:
+            open_location_action = menu.addAction("Open file location")
+        menu.addSeparator()
         favorite_action = menu.addAction(
             "Remove from favorites" if card.favorite else "Add to favorites"
         )
@@ -436,7 +453,13 @@ class Dashboard(QMainWindow):
         pin_action = menu.addAction("Unpin card" if card.pinned else "Pin card")
         delete_action = menu.addAction("Delete card")
         action = menu.exec(self.card_list.mapToGlobal(position))  # type: ignore[arg-type]
-        if action is favorite_action:
+        if action is edit_action:
+            self._edit_card(card)
+        elif action is copy_action:
+            self._copy_card(card)
+        elif open_location_action is not None and action is open_location_action:
+            self._open_card_location(card)
+        elif action is favorite_action:
             self.store.update_favorite(card.id, not card.favorite)
             self.refresh_cards()
         elif action is pin_action:
@@ -446,6 +469,62 @@ class Dashboard(QMainWindow):
                 self._pin_selected(item)
         elif action is delete_action:
             self._delete_card(card)
+
+    def _edit_card(self, card: Card) -> None:
+        if card.id is None:
+            return
+        pin = self.pins.get(card.id)
+        was_visible = pin.isVisible() if pin is not None else False
+        if pin is not None:
+            pin.save_now()
+
+        dialog = CardEditor(card, self)
+        if not dialog.exec():
+            return
+        title, game, content = dialog.values()
+        if not self.store.update_details(
+            card.id,
+            title=title,
+            game=game or "General",
+            content=content,
+        ):
+            QMessageBox.warning(self, "Edit failed", "The selected card no longer exists.")
+            return
+
+        updated = self.store.get(card.id)
+        if updated is None:
+            return
+        if pin is not None:
+            self.pins.pop(card.id, None)
+            pin.close()
+            pin.deleteLater()
+            self.show_pin(updated, persist=False)
+            if not was_visible:
+                self.pins[card.id].hide()
+        self.refresh_cards()
+        self.statusBar().showMessage("Card updated", 2500)
+
+    def _copy_card(self, card: Card) -> None:
+        clipboard = QApplication.clipboard()
+        if card.kind is CardKind.NOTE:
+            clipboard.setText(card.content)
+            self.statusBar().showMessage("Note copied to clipboard", 2500)
+            return
+
+        image = QImage(card.image_path)
+        if image.isNull():
+            QMessageBox.warning(self, "Copy failed", "The screenshot file could not be found.")
+            return
+        clipboard.setImage(image)
+        self.statusBar().showMessage("Screenshot copied to clipboard", 2500)
+
+    def _open_card_location(self, card: Card) -> None:
+        path = Path(card.image_path)
+        if card.kind is not CardKind.IMAGE or not path.is_file():
+            QMessageBox.warning(self, "File unavailable", "The screenshot file could not be found.")
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent))):
+            QMessageBox.warning(self, "Open failed", "The screenshot folder could not be opened.")
 
     def _delete_card(self, card: Card) -> None:
         if card.id is None:
