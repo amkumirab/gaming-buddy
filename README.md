@@ -33,6 +33,8 @@ game window. The prototype is designed for quick interaction and stores its data
 - Edit saved card titles, game names, and note text without recreating them
 - Copy note text or full-resolution screenshots directly to the clipboard
 - Open a screenshot's local folder from its card menu
+- Detect the active Windows game and switch to its linked card profile automatically
+- Show only the active game's saved pins, plus General pins, when profiles switch
 - Restore pinned cards, positions, sizes, and opacity after restarting
 - Temporarily show or hide all saved pins without deleting them
 - Keep restored pins visible when monitors or resolutions change
@@ -82,6 +84,8 @@ python -m gaming_buddy
 7. Enable **Click-through pins** so mouse input goes to the game.
 8. Open **Keyboard shortcuts…** to personalize controls without restarting.
 9. Right-click a saved card or pin to edit, copy, or locate its original file.
+10. Open a game, return with the panel shortcut, enter its name, and choose
+    **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
 
 Captured images and the SQLite database are stored under:
 
@@ -99,6 +103,8 @@ gaming-buddy/
 │   ├── capture.py      # Screen-region capture
 │   ├── card_editor.py  # Saved-card editor
 │   ├── pin.py          # Movable overlay cards
+│   ├── profiles.py     # Active-game detection and profile mappings
+│   ├── profile_dialog.py # Profile manager
 │   ├── hotkeys.py      # Global keyboard shortcuts
 │   ├── shortcut_dialog.py # Shortcut settings dialog
 │   └── storage.py      # Local SQLite persistence
@@ -111,6 +117,8 @@ gaming-buddy/
 - Notes and captured images remain on the user's computer.
 - The prototype does not require an account or cloud connection.
 - Captures are created only after the user activates the capture shortcut.
+- Active-game detection reads only the foreground window title, process ID, and executable name.
+- Automatic profile switching is disabled by default and profile links remain local.
 - Saved data can be removed by deleting `%LOCALAPPDATA%\GamingBuddy`.
 
 ## Compatibility and fair-play note

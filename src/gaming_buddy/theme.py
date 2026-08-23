@@ -4,7 +4,7 @@ STYLESHEET = """
     font-size: 13px;
     color: #f4f1ff;
 }
-QMainWindow, QWidget#panel, QDialog#imageViewer {
+QMainWindow, QWidget#panel, QDialog {
     background: #12101b;
 }
 QFrame#hero {
@@ -25,14 +25,14 @@ QLabel#section {
     font-size: 12px;
     font-weight: 700;
 }
-QLineEdit, QTextEdit, QListWidget {
+QLineEdit, QTextEdit, QListWidget, QTableWidget {
     background: #0d0b14;
     border: 1px solid #39304d;
     border-radius: 10px;
     padding: 9px;
     selection-background-color: #7657ff;
 }
-QLineEdit:focus, QTextEdit:focus, QListWidget:focus {
+QLineEdit:focus, QTextEdit:focus, QListWidget:focus, QTableWidget:focus {
     border: 1px solid #8a6cff;
 }
 QPushButton {
@@ -67,6 +67,16 @@ QListWidget::item {
     border-bottom: 1px solid #282235;
 }
 QListWidget::item:selected { background: #30264c; }
+QTableWidget::item { padding: 7px; }
+QTableWidget::item:selected { background: #30264c; }
+QHeaderView::section {
+    background: #1b1729;
+    color: #bca8ff;
+    border: none;
+    border-bottom: 1px solid #39304d;
+    padding: 8px;
+    font-weight: 700;
+}
 QMenu {
     background: #191522;
     border: 1px solid #403653;

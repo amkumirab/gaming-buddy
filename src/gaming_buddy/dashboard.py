@@ -30,6 +30,13 @@ from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.pin import PinWidget
+from gaming_buddy.profile_dialog import ProfileDialog
+from gaming_buddy.profiles import (
+    ActiveApplication,
+    ActiveGameDetector,
+    GameProfileStore,
+    belongs_to_profile,
+)
 from gaming_buddy.shortcut_dialog import ShortcutDialog
 from gaming_buddy.storage import CardStore
 
@@ -46,6 +53,10 @@ class Dashboard(QMainWindow):
         self.captures_dir = captures_dir
         self.settings = QSettings("GamingBuddy", "GamingBuddy")
         self.shortcuts = self._load_shortcuts()
+        self.profile_store = GameProfileStore(self.settings)
+        self.active_application: ActiveApplication | None = None
+        self.game_detector = ActiveGameDetector(self)
+        self.game_detector.active_changed.connect(self._on_active_application)
         self.pins: dict[int, PinWidget] = {}
         self.capture_overlay: SelectionOverlay | None = None
         self._really_quit = False
@@ -59,6 +70,7 @@ class Dashboard(QMainWindow):
         self._restore_settings()
         self.refresh_cards()
         QTimer.singleShot(0, self.restore_workspace)
+        QTimer.singleShot(0, self.game_detector.start)
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -87,6 +99,28 @@ class Dashboard(QMainWindow):
         self.game_input.textChanged.connect(self._on_game_changed)
         layout.addWidget(game_label)
         layout.addWidget(self.game_input)
+
+        profile_options = QHBoxLayout()
+        self.auto_profiles = QCheckBox("Auto-switch game profiles")
+        self.auto_profiles.toggled.connect(self.set_auto_profiles)
+        manage_profiles = QPushButton("Profiles…")
+        manage_profiles.clicked.connect(self.manage_profiles)
+        profile_options.addWidget(self.auto_profiles)
+        profile_options.addStretch(1)
+        profile_options.addWidget(manage_profiles)
+        layout.addLayout(profile_options)
+
+        detected_row = QHBoxLayout()
+        self.detected_app = QLabel("Waiting for an active game…")
+        self.detected_app.setObjectName("muted")
+        self.detected_app.setToolTip(
+            "Open a game, return with the panel shortcut, then link the detected executable."
+        )
+        link_profile = QPushButton("Link detected app")
+        link_profile.clicked.connect(self.link_detected_application)
+        detected_row.addWidget(self.detected_app, 1)
+        detected_row.addWidget(link_profile)
+        layout.addLayout(detected_row)
 
         note_label = QLabel("QUICK NOTE")
         note_label.setObjectName("section")
@@ -190,6 +224,8 @@ class Dashboard(QMainWindow):
         hide_pins_action.triggered.connect(self.hide_all_pins)
         shortcuts_action = QAction("Keyboard shortcuts…", menu)
         shortcuts_action.triggered.connect(self.edit_shortcuts)
+        profiles_action = QAction("Game profiles…", menu)
+        profiles_action.triggered.connect(self.manage_profiles)
         quit_action = QAction("Quit", menu)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
@@ -198,6 +234,7 @@ class Dashboard(QMainWindow):
         menu.addAction(show_pins_action)
         menu.addAction(hide_pins_action)
         menu.addSeparator()
+        menu.addAction(profiles_action)
         menu.addAction(shortcuts_action)
         menu.addSeparator()
         menu.addAction(quit_action)
@@ -211,6 +248,79 @@ class Dashboard(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
+        self.auto_profiles.setChecked(self.settings.value("profiles/auto_switch", False, type=bool))
+
+    def set_auto_profiles(self, enabled: bool) -> None:
+        self.settings.setValue("profiles/auto_switch", enabled)
+        if enabled and self.active_application is not None:
+            game = self.profile_store.game_for(self.active_application.executable)
+            if game:
+                self._switch_game_profile(game)
+        message = "Automatic profile switching enabled" if enabled else "Profile switching paused"
+        self.statusBar().showMessage(message, 2500)
+
+    def link_detected_application(self) -> None:
+        application = self.game_detector.last_external_application
+        if application is None:
+            QMessageBox.information(
+                self,
+                "No game detected",
+                "Open the game, return with the panel shortcut, then try again.",
+            )
+            return
+        game = self.game_input.text().strip()
+        if not game:
+            QMessageBox.warning(self, "Game required", "Enter the current game name first.")
+            self.game_input.setFocus()
+            return
+        self.profile_store.link(application.executable, game)
+        self._update_detected_label(application)
+        self.statusBar().showMessage(
+            f"Linked {application.executable} to the {game} profile",
+            3500,
+        )
+
+    def manage_profiles(self) -> None:
+        dialog = ProfileDialog(self.profile_store.all(), self)
+        if not dialog.exec():
+            return
+        self.profile_store.replace(dialog.profiles())
+        if self.active_application is not None:
+            self._update_detected_label(self.active_application)
+            game = self.profile_store.game_for(self.active_application.executable)
+            if game and self.auto_profiles.isChecked():
+                self._switch_game_profile(game)
+        self.statusBar().showMessage("Game profiles updated", 2500)
+
+    def _on_active_application(self, application: ActiveApplication) -> None:
+        self.active_application = application
+        self._update_detected_label(application)
+        game = self.profile_store.game_for(application.executable)
+        if game and self.auto_profiles.isChecked():
+            self._switch_game_profile(game)
+
+    def _update_detected_label(self, application: ActiveApplication) -> None:
+        game = self.profile_store.game_for(application.executable)
+        suffix = f" → {game}" if game else " · not linked"
+        self.detected_app.setText(f"Detected: {application.executable}{suffix}")
+        self.detected_app.setToolTip(application.title or application.executable)
+
+    def _switch_game_profile(self, game: str) -> None:
+        changed = self.game_input.text().strip().casefold() != game.casefold()
+        if changed:
+            self.game_input.setText(game)
+        self._show_profile_workspace(game)
+        if changed:
+            self.statusBar().showMessage(f"Switched to {game} profile", 3000)
+
+    def _show_profile_workspace(self, game: str) -> None:
+        for card in self.store.list(pinned_only=True):
+            visible = belongs_to_profile(card.game, game)
+            pin = self.pins.get(card.id) if card.id is not None else None
+            if visible:
+                self.show_pin(card, persist=False)
+            elif pin is not None:
+                pin.hide()
 
     def _load_shortcuts(self) -> dict[str, str]:
         saved = {
@@ -558,6 +668,7 @@ class Dashboard(QMainWindow):
             self.show_panel()
 
     def show_panel(self) -> None:
+        self.game_detector.poll_now()
         self.show()
         self.raise_()
         self.activateWindow()
@@ -581,6 +692,7 @@ class Dashboard(QMainWindow):
             )
 
     def quit_app(self) -> None:
+        self.game_detector.stop()
         for pin in self.pins.values():
             pin.save_now()
         self._really_quit = True
