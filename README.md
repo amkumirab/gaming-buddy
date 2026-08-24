@@ -35,6 +35,8 @@ game window. The prototype is designed for quick interaction and stores its data
 - Open a screenshot's local folder from its card menu
 - Detect the active Windows game and switch to its linked card profile automatically
 - Show only the active game's saved pins, plus General pins, when profiles switch
+- Back up cards, screenshots, profiles, and portable settings to a verified ZIP archive
+- Restore backups by safely merging cards and skipping exact duplicates
 - Restore pinned cards, positions, sizes, and opacity after restarting
 - Temporarily show or hide all saved pins without deleting them
 - Keep restored pins visible when monitors or resolutions change
@@ -86,6 +88,8 @@ python -m gaming_buddy
 9. Right-click a saved card or pin to edit, copy, or locate its original file.
 10. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
+11. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+    and merge it without deleting the current library.
 
 Captured images and the SQLite database are stored under:
 
@@ -107,6 +111,7 @@ gaming-buddy/
 │   ├── profile_dialog.py # Profile manager
 │   ├── hotkeys.py      # Global keyboard shortcuts
 │   ├── shortcut_dialog.py # Shortcut settings dialog
+│   ├── workspace_backup.py # Verified backup and restore
 │   └── storage.py      # Local SQLite persistence
 ├── tests/              # Automated storage and path tests
 └── docs/               # Project preview assets
@@ -119,6 +124,8 @@ gaming-buddy/
 - Captures are created only after the user activates the capture shortcut.
 - Active-game detection reads only the foreground window title, process ID, and executable name.
 - Automatic profile switching is disabled by default and profile links remain local.
+- Backups are written only to the location selected by the user and are never uploaded.
+- Backup ZIP files are not encrypted, so they should be stored in a trusted location.
 - Saved data can be removed by deleting `%LOCALAPPDATA%\GamingBuddy`.
 
 ## Compatibility and fair-play note
@@ -132,7 +139,7 @@ desktop overlays. Always follow the rules of the game you are playing.
 
 This release intentionally focuses on the core overlay and notebook experience. Planned
 improvements include text recognition, spoiler-safe layered hints, optional web lookup,
-better multi-monitor support, import/export, and a Windows installer.
+better multi-monitor support, and a Windows installer.
 
 ## Development
 

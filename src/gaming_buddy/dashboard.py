@@ -8,6 +8,7 @@ from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QImage,
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -39,6 +40,12 @@ from gaming_buddy.profiles import (
 )
 from gaming_buddy.shortcut_dialog import ShortcutDialog
 from gaming_buddy.storage import CardStore
+from gaming_buddy.workspace_backup import (
+    BackupError,
+    create_workspace_backup,
+    inspect_workspace_backup,
+    restore_workspace_backup,
+)
 
 
 class Dashboard(QMainWindow):
@@ -63,7 +70,7 @@ class Dashboard(QMainWindow):
 
         self.setWindowTitle("Gaming Buddy")
         self.setMinimumSize(430, 730)
-        self.resize(470, 810)
+        self.resize(470, 900)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self._build_ui()
         self._build_tray()
@@ -166,9 +173,17 @@ class Dashboard(QMainWindow):
         workspace_controls.addWidget(hide_pins)
         layout.addLayout(workspace_controls)
 
-        shortcuts_button = QPushButton("Keyboard shortcuts…")
+        tools = QHBoxLayout()
+        shortcuts_button = QPushButton("Shortcuts…")
         shortcuts_button.clicked.connect(self.edit_shortcuts)
-        layout.addWidget(shortcuts_button)
+        backup_button = QPushButton("Backup…")
+        backup_button.clicked.connect(self.backup_workspace)
+        restore_button = QPushButton("Restore…")
+        restore_button.clicked.connect(self.restore_backup)
+        tools.addWidget(shortcuts_button)
+        tools.addWidget(backup_button)
+        tools.addWidget(restore_button)
+        layout.addLayout(tools)
 
         library_header = QHBoxLayout()
         library_label = QLabel("SAVED CARDS")
@@ -226,6 +241,10 @@ class Dashboard(QMainWindow):
         shortcuts_action.triggered.connect(self.edit_shortcuts)
         profiles_action = QAction("Game profiles…", menu)
         profiles_action.triggered.connect(self.manage_profiles)
+        backup_action = QAction("Backup workspace…", menu)
+        backup_action.triggered.connect(self.backup_workspace)
+        restore_action = QAction("Restore backup…", menu)
+        restore_action.triggered.connect(self.restore_backup)
         quit_action = QAction("Quit", menu)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
@@ -236,6 +255,9 @@ class Dashboard(QMainWindow):
         menu.addSeparator()
         menu.addAction(profiles_action)
         menu.addAction(shortcuts_action)
+        menu.addSeparator()
+        menu.addAction(backup_action)
+        menu.addAction(restore_action)
         menu.addSeparator()
         menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
@@ -356,6 +378,107 @@ class Dashboard(QMainWindow):
             self.shortcut_footer.setText(
                 f"{panel} panel  •  {capture} capture  •  Double-click to pin"
             )
+
+    def backup_workspace(self) -> None:
+        timestamp = datetime.now(UTC).astimezone().strftime("%Y%m%d")
+        default_name = Path.home() / "Documents" / f"Gaming-Buddy-backup-{timestamp}.zip"
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Backup workspace",
+            str(default_name),
+            "ZIP backup (*.zip)",
+        )
+        if not filename:
+            return
+        destination = Path(filename)
+        if destination.suffix.casefold() != ".zip":
+            destination = destination.with_suffix(".zip")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            summary = create_workspace_backup(destination, self.store, self.settings)
+        except (BackupError, OSError) as exc:
+            QMessageBox.warning(self, "Backup failed", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        missing = (
+            f"\nMissing image files: {summary.missing_image_count}"
+            if summary.missing_image_count
+            else ""
+        )
+        QMessageBox.information(
+            self,
+            "Backup complete",
+            f"Saved {summary.card_count} cards and {summary.image_count} images to:\n"
+            f"{destination}{missing}",
+        )
+
+    def restore_backup(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Restore workspace backup",
+            str(Path.home() / "Documents"),
+            "ZIP backup (*.zip)",
+        )
+        if not filename:
+            return
+        source = Path(filename)
+        try:
+            summary = inspect_workspace_backup(source)
+        except BackupError as exc:
+            QMessageBox.warning(self, "Invalid backup", str(exc))
+            return
+        answer = QMessageBox.question(
+            self,
+            "Restore workspace backup",
+            f"Backup created: {summary.created_at}\n"
+            f"Cards: {summary.card_count}\n"
+            f"Images: {summary.image_count}\n\n"
+            "Cards will be merged with the current library and exact duplicates will be skipped. "
+            "Current cards and images will not be deleted. Matching portable settings will be "
+            "updated.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            result = restore_workspace_backup(
+                source,
+                self.store,
+                self.captures_dir,
+                self.settings,
+            )
+        except (BackupError, OSError) as exc:
+            QMessageBox.warning(self, "Restore failed", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        self._reload_restored_settings()
+        self.refresh_cards()
+        self.restore_workspace()
+        if self.active_application is not None and self.auto_profiles.isChecked():
+            game = self.profile_store.game_for(self.active_application.executable)
+            if game:
+                self._switch_game_profile(game)
+        QMessageBox.information(
+            self,
+            "Restore complete",
+            f"Imported cards: {result.imported_cards}\n"
+            f"Duplicates skipped: {result.duplicate_cards}\n"
+            f"Unavailable cards skipped: {result.skipped_cards}\n"
+            f"Settings restored: {result.restored_settings}",
+        )
+
+    def _reload_restored_settings(self) -> None:
+        self.shortcuts = self._load_shortcuts()
+        self._update_shortcut_labels()
+        self.shortcuts_changed.emit(self.shortcuts.copy())
+        self.profile_store = GameProfileStore(self.settings)
+        self.game_input.setText(str(self.settings.value("game", "")))
+        self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
+        self.auto_profiles.setChecked(self.settings.value("profiles/auto_switch", False, type=bool))
 
     def _on_game_changed(self, value: str) -> None:
         self.settings.setValue("game", value)
