@@ -42,6 +42,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Keep restored pins visible when monitors or resolutions change
 - Persist everything locally in SQLite
 - Configurable global shortcuts and a system tray menu
+- Per-user Windows installer with clean update and uninstall support
 - No code injection and no game-memory access
 
 ## Shortcuts
@@ -58,10 +59,10 @@ empty, and modifier-free shortcuts.
 
 ## Run from source
 
-Windows and Python 3.11 or newer are required.
+Windows 10 version 1809 or newer and Python 3.11 or newer are required.
 
 ```powershell
-git clone https://github.com/YOUR_USERNAME/gaming-buddy.git
+git clone https://github.com/amkumirab/gaming-buddy.git
 cd gaming-buddy
 py -m venv .venv
 .venv\Scripts\Activate.ps1
@@ -74,6 +75,21 @@ You can also run it without installing the command:
 ```powershell
 python -m gaming_buddy
 ```
+
+## Install on Windows
+
+Download the latest `Gaming-Buddy-Setup-*-x64.exe` file from the repository's
+[Releases](https://github.com/amkumirab/gaming-buddy/releases) page and run it. The
+installer does not require administrator access. It creates a Start menu shortcut and
+can optionally create a desktop shortcut.
+
+Updates reuse the same installation and preserve the local workspace. Uninstalling the
+application removes program files and shortcuts but keeps notes, screenshots, profiles,
+and settings under `%LOCALAPPDATA%\GamingBuddy`. Delete that folder manually only when
+you also want to remove the workspace.
+
+Unsigned preview builds may show a Windows SmartScreen warning. Every release includes
+a `.sha256` file so the installer can be checked before it is run.
 
 ## How to use
 
@@ -114,6 +130,9 @@ gaming-buddy/
 │   ├── workspace_backup.py # Verified backup and restore
 │   └── storage.py      # Local SQLite persistence
 ├── tests/              # Automated storage and path tests
+├── packaging/          # Windows executable and installer configuration
+├── scripts/            # Release metadata validation
+├── .github/workflows/  # Test and tagged-release automation
 └── docs/               # Project preview assets
 ```
 
@@ -139,7 +158,7 @@ desktop overlays. Always follow the rules of the game you are playing.
 
 This release intentionally focuses on the core overlay and notebook experience. Planned
 improvements include text recognition, spoiler-safe layered hints, optional web lookup,
-better multi-monitor support, and a Windows installer.
+and better multi-monitor support.
 
 ## Development
 
@@ -147,6 +166,19 @@ better multi-monitor support, and a Windows installer.
 python -m pytest
 python -m ruff check .
 ```
+
+Build the Windows application and installer with:
+
+```powershell
+python -m pip install -e ".[dev,packaging]"
+python scripts/validate_release.py
+python -m PyInstaller --clean --noconfirm packaging/gaming-buddy.spec
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging/gaming-buddy.iss
+```
+
+Pushing a tag that exactly matches the project version, such as `v0.1.0`, runs the
+Windows release workflow and publishes the installer and its SHA-256 checksum. Running
+the workflow manually builds a downloadable test artifact without publishing a release.
 
 ## Ownership and license
 

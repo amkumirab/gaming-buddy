@@ -8,6 +8,7 @@ htmlcov/
 venv/
 build/
 dist/
+release/
 *.sqlite3
 *.db
 .idea/

@@ -30,6 +30,9 @@ dev = [
   "pytest-cov>=5,<7",
   "ruff>=0.6,<1",
 ]
+packaging = [
+  "pyinstaller>=6.22,<7",
+]
 
 [project.scripts]
 gaming-buddy = "gaming_buddy.app:main"
