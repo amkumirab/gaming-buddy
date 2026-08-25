@@ -42,6 +42,8 @@ game window. The prototype is designed for quick interaction and stores its data
 - Keep restored pins visible when monitors or resolutions change
 - Persist everything locally in SQLite
 - Configurable global shortcuts and a system tray menu
+- First-run setup guide with a quick overview of capture, pins, and shortcuts
+- Optional launch at Windows sign-in without administrator access
 - Per-user Windows installer with clean update and uninstall support
 - No code injection and no game-memory access
 
@@ -84,9 +86,9 @@ installer does not require administrator access. It creates a Start menu shortcu
 can optionally create a desktop shortcut.
 
 Updates reuse the same installation and preserve the local workspace. Uninstalling the
-application removes program files and shortcuts but keeps notes, screenshots, profiles,
-and settings under `%LOCALAPPDATA%\GamingBuddy`. Delete that folder manually only when
-you also want to remove the workspace.
+application removes program files, shortcuts, and its launch-at-sign-in entry but keeps
+notes and screenshots under `%LOCALAPPDATA%\GamingBuddy`. Interface preferences, shortcuts,
+and game profiles remain in the current user's Windows settings.
 
 Unsigned preview builds may show a Windows SmartScreen warning. Every release includes
 a `.sha256` file so the installer can be checked before it is run.
@@ -106,6 +108,9 @@ a `.sha256` file so the installer can be checked before it is run.
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
 11. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
+12. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+13. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+    signing in.
 
 Captured images and the SQLite database are stored under:
 
@@ -127,6 +132,8 @@ gaming-buddy/
 │   ├── profile_dialog.py # Profile manager
 │   ├── hotkeys.py      # Global keyboard shortcuts
 │   ├── shortcut_dialog.py # Shortcut settings dialog
+│   ├── onboarding.py   # First-run setup guide
+│   ├── startup.py      # Per-user Windows startup setting
 │   ├── workspace_backup.py # Verified backup and restore
 │   └── storage.py      # Local SQLite persistence
 ├── tests/              # Automated storage and path tests
@@ -139,13 +146,15 @@ gaming-buddy/
 ## Privacy and storage
 
 - Notes and captured images remain on the user's computer.
+- Interface preferences, shortcut mappings, and profiles use the current Windows account.
 - The prototype does not require an account or cloud connection.
 - Captures are created only after the user activates the capture shortcut.
 - Active-game detection reads only the foreground window title, process ID, and executable name.
 - Automatic profile switching is disabled by default and profile links remain local.
+- Launch at sign-in is optional and uses the current user's Windows startup entry.
 - Backups are written only to the location selected by the user and are never uploaded.
 - Backup ZIP files are not encrypted, so they should be stored in a trusted location.
-- Saved data can be removed by deleting `%LOCALAPPDATA%\GamingBuddy`.
+- Saved cards and captured images can be removed by deleting `%LOCALAPPDATA%\GamingBuddy`.
 
 ## Compatibility and fair-play note
 

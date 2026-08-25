@@ -40,6 +40,7 @@ def test_installer_is_per_user_and_preserves_workspace() -> None:
     assert "MinVersion=10.0.17763" in installer
     assert r"DefaultDirName={localappdata}\Programs\Gaming Buddy" in installer
     assert "recursesubdirs createallsubdirs" in installer
+    assert "ValueName: \"GamingBuddy\"; Flags: uninsdeletevalue dontcreatekey noerror" in installer
     assert "[UninstallDelete]" not in installer
     assert r"{localappdata}\GamingBuddy" not in installer
 

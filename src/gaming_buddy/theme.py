@@ -12,10 +12,39 @@ QFrame#hero {
     border: 1px solid #352b52;
     border-radius: 16px;
 }
+QFrame#setupCard {
+    background: #191624;
+    border: 1px solid #352b52;
+    border-radius: 12px;
+}
 QLabel#brand {
     font-size: 22px;
     font-weight: 700;
     color: #ffffff;
+}
+QLabel#setupTitle {
+    color: #ffffff;
+    font-size: 21px;
+    font-weight: 700;
+}
+QLabel#setupHeading {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 700;
+}
+QLabel#setupStep {
+    background: #7657ff;
+    border: 1px solid #947fff;
+    border-radius: 16px;
+    color: #ffffff;
+    font-weight: 700;
+}
+QLabel#setupNotice {
+    background: #211b34;
+    border: 1px solid #594886;
+    border-radius: 10px;
+    color: #d8ccff;
+    padding: 10px;
 }
 QLabel#subtitle, QLabel#muted {
     color: #a9a1bf;

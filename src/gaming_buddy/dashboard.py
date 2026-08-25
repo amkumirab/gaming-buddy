@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -30,6 +30,7 @@ from gaming_buddy.capture import SelectionOverlay, begin_capture
 from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
 from gaming_buddy.models import Card, CardKind
+from gaming_buddy.onboarding import OnboardingDialog
 from gaming_buddy.pin import PinWidget
 from gaming_buddy.profile_dialog import ProfileDialog
 from gaming_buddy.profiles import (
@@ -39,6 +40,7 @@ from gaming_buddy.profiles import (
     belongs_to_profile,
 )
 from gaming_buddy.shortcut_dialog import ShortcutDialog
+from gaming_buddy.startup import StartupError, StartupManager
 from gaming_buddy.storage import CardStore
 from gaming_buddy.workspace_backup import (
     BackupError,
@@ -59,6 +61,7 @@ class Dashboard(QMainWindow):
         self.store = store
         self.captures_dir = captures_dir
         self.settings = QSettings("GamingBuddy", "GamingBuddy")
+        self.startup_manager = StartupManager()
         self.shortcuts = self._load_shortcuts()
         self.profile_store = GameProfileStore(self.settings)
         self.active_application: ActiveApplication | None = None
@@ -78,6 +81,7 @@ class Dashboard(QMainWindow):
         self.refresh_cards()
         QTimer.singleShot(0, self.restore_workspace)
         QTimer.singleShot(0, self.game_detector.start)
+        QTimer.singleShot(350, self._show_first_run_setup)
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -180,9 +184,12 @@ class Dashboard(QMainWindow):
         backup_button.clicked.connect(self.backup_workspace)
         restore_button = QPushButton("Restore…")
         restore_button.clicked.connect(self.restore_backup)
+        getting_started_button = QPushButton("Getting started…")
+        getting_started_button.clicked.connect(self.show_getting_started)
         tools.addWidget(shortcuts_button)
         tools.addWidget(backup_button)
         tools.addWidget(restore_button)
+        tools.addWidget(getting_started_button)
         layout.addLayout(tools)
 
         library_header = QHBoxLayout()
@@ -245,6 +252,12 @@ class Dashboard(QMainWindow):
         backup_action.triggered.connect(self.backup_workspace)
         restore_action = QAction("Restore backup…", menu)
         restore_action.triggered.connect(self.restore_backup)
+        getting_started_action = QAction("Getting started…", menu)
+        getting_started_action.triggered.connect(self.show_getting_started)
+        self.launch_at_sign_in_action = QAction("Launch at Windows sign-in", menu)
+        self.launch_at_sign_in_action.setCheckable(True)
+        self.launch_at_sign_in_action.setChecked(self.startup_manager.is_enabled())
+        self.launch_at_sign_in_action.triggered.connect(self.set_launch_at_sign_in)
         quit_action = QAction("Quit", menu)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
@@ -259,7 +272,11 @@ class Dashboard(QMainWindow):
         menu.addAction(backup_action)
         menu.addAction(restore_action)
         menu.addSeparator()
+        menu.addAction(getting_started_action)
+        menu.addAction(self.launch_at_sign_in_action)
+        menu.addSeparator()
         menu.addAction(quit_action)
+        menu.aboutToShow.connect(self._refresh_startup_action)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._tray_activated)
         self.tray.show()
@@ -271,6 +288,44 @@ class Dashboard(QMainWindow):
             self.restoreGeometry(geometry)
         self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
         self.auto_profiles.setChecked(self.settings.value("profiles/auto_switch", False, type=bool))
+
+    def _show_first_run_setup(self) -> None:
+        completed = self.settings.value("onboarding/completed", False, type=bool)
+        if completed:
+            return
+        self.show_getting_started()
+        self.settings.setValue("onboarding/completed", True)
+        self.settings.sync()
+
+    def show_getting_started(self, _checked: bool = False) -> None:
+        launch_at_sign_in = self.startup_manager.is_enabled()
+        dialog = OnboardingDialog(self.shortcuts, launch_at_sign_in, self)
+        if dialog.exec() and dialog.launch_at_sign_in != launch_at_sign_in:
+            self.set_launch_at_sign_in(dialog.launch_at_sign_in)
+
+    def set_launch_at_sign_in(self, enabled: bool) -> None:
+        try:
+            self.startup_manager.set_enabled(enabled)
+        except StartupError as error:
+            actual_state = self.startup_manager.is_enabled()
+            blocker = QSignalBlocker(self.launch_at_sign_in_action)
+            self.launch_at_sign_in_action.setChecked(actual_state)
+            del blocker
+            QMessageBox.warning(self, "Startup setting unavailable", str(error))
+            return
+
+        blocker = QSignalBlocker(self.launch_at_sign_in_action)
+        self.launch_at_sign_in_action.setChecked(enabled)
+        del blocker
+        message = (
+            "Gaming Buddy will launch at sign-in" if enabled else "Launch at sign-in disabled"
+        )
+        self.statusBar().showMessage(message, 3000)
+
+    def _refresh_startup_action(self) -> None:
+        blocker = QSignalBlocker(self.launch_at_sign_in_action)
+        self.launch_at_sign_in_action.setChecked(self.startup_manager.is_enabled())
+        del blocker
 
     def set_auto_profiles(self, enabled: bool) -> None:
         self.settings.setValue("profiles/auto_switch", enabled)
