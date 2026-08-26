@@ -321,7 +321,7 @@ class PinWidget(QWidget):
             )
             menu.addAction(action)
         menu.addSeparator()
-        remove = QAction("Delete card", menu)
+        remove = QAction("Move to trash", menu)
         remove.triggered.connect(lambda: self._on_delete(self.card))
         menu.addAction(remove)
         menu.exec(event.globalPos())  # type: ignore[attr-defined]

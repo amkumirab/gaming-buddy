@@ -34,9 +34,26 @@ def test_card_lifecycle(tmp_path):
         assert (updated.x, updated.y, updated.width, updated.height) == (15, 25, 500, 260)
         assert updated.opacity == 0.55
 
-        assert store.delete(card.id)
+        assert store.move_to_trash(card.id)
         assert store.get(card.id) is None
-        assert not store.delete(card.id)
+        assert store.list() == []
+        deleted = store.get_deleted(card.id)
+        assert deleted is not None
+        assert deleted.pinned is False
+        assert deleted.deleted_at
+        assert not store.move_to_trash(card.id)
+
+        assert store.restore(card.id)
+        restored = store.get(card.id)
+        assert restored is not None
+        assert restored.title == card.title
+        assert restored.deleted_at == ""
+        assert not store.restore(card.id)
+
+        assert not store.delete_permanently(card.id)
+        assert store.move_to_trash(card.id)
+        assert store.delete_permanently(card.id)
+        assert store.get_deleted(card.id) is None
 
 
 def test_values_are_safely_clamped(tmp_path):
@@ -207,5 +224,49 @@ def test_existing_database_gets_workspace_columns(tmp_path):
         assert cards[0].title == "Old clue"
         assert cards[0].favorite is False
         assert cards[0].pinned is False
+        assert cards[0].deleted_at == ""
         assert store.update_favorite(cards[0].id, True)
         assert store.update_pinned(cards[0].id, True)
+
+
+def test_deleted_cards_can_be_searched_and_purged_by_age(tmp_path):
+    database = tmp_path / "cards.sqlite3"
+    with CardStore(database) as store:
+        old = store.add(Card(None, CardKind.NOTE, "Control", "Old clue", content="Oceanview"))
+        recent = store.add(
+            Card(None, CardKind.NOTE, "Alan Wake 2", "Recent clue", content="Coffee World")
+        )
+        assert store.move_to_trash(old.id)
+        assert store.move_to_trash(recent.id)
+
+        connection = sqlite3.connect(database)
+        connection.execute(
+            "UPDATE cards SET deleted_at = ? WHERE id = ?",
+            ("2026-01-01T00:00:00+00:00", old.id),
+        )
+        connection.execute(
+            "UPDATE cards SET deleted_at = ? WHERE id = ?",
+            ("2026-08-20T00:00:00+00:00", recent.id),
+        )
+        connection.commit()
+        connection.close()
+
+        assert [card.id for card in store.list_deleted("coffee")] == [recent.id]
+        purged = store.purge_deleted_before("2026-08-01T00:00:00+00:00")
+        assert [card.id for card in purged] == [old.id]
+        assert store.get_deleted(old.id) is None
+        assert store.get_deleted(recent.id) is not None
+        assert store.deleted_count() == 1
+
+
+def test_empty_trash_returns_removed_cards(tmp_path):
+    with CardStore(tmp_path / "cards.sqlite3") as store:
+        first = store.add(Card(None, CardKind.NOTE, "Game", "First"))
+        second = store.add(Card(None, CardKind.NOTE, "Game", "Second"))
+        assert store.move_to_trash(first.id)
+        assert store.move_to_trash(second.id)
+
+        removed = store.empty_trash()
+
+        assert {card.id for card in removed} == {first.id, second.id}
+        assert store.deleted_count() == 0

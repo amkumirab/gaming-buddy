@@ -17,6 +17,11 @@ QFrame#setupCard {
     border: 1px solid #352b52;
     border-radius: 12px;
 }
+QFrame#undoBar {
+    background: #211b34;
+    border: 1px solid #594886;
+    border-radius: 10px;
+}
 QLabel#brand {
     font-size: 22px;
     font-weight: 700;
@@ -25,6 +30,11 @@ QLabel#brand {
 QLabel#setupTitle {
     color: #ffffff;
     font-size: 21px;
+    font-weight: 700;
+}
+QLabel#dialogTitle {
+    color: #ffffff;
+    font-size: 20px;
     font-weight: 700;
 }
 QLabel#setupHeading {
@@ -79,6 +89,7 @@ QPushButton#primary {
 }
 QPushButton#primary:hover { background: #866cff; }
 QPushButton#danger { color: #ff9da8; }
+QPushButton#compact { padding: 5px 9px; }
 QCheckBox { spacing: 8px; color: #c9c1dc; }
 QSlider::groove:horizontal {
     height: 5px;

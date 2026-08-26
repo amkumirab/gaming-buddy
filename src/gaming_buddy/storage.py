@@ -33,7 +33,8 @@ class CardStore:
                 favorite INTEGER NOT NULL DEFAULT 0,
                 pinned INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                deleted_at TEXT NOT NULL DEFAULT ''
             )
             """
         )
@@ -49,6 +50,10 @@ class CardStore:
             self._connection.execute(
                 "ALTER TABLE cards ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
             )
+        if "deleted_at" not in columns:
+            self._connection.execute(
+                "ALTER TABLE cards ADD COLUMN deleted_at TEXT NOT NULL DEFAULT ''"
+            )
         self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_cards_game_updated ON cards(game, updated_at DESC)"
         )
@@ -62,6 +67,12 @@ class CardStore:
             """
             CREATE INDEX IF NOT EXISTS idx_cards_pinned_updated
             ON cards(pinned DESC, updated_at DESC)
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cards_deleted_at
+            ON cards(deleted_at DESC)
             """
         )
         self._connection.commit()
@@ -103,7 +114,7 @@ class CardStore:
         favorites_only: bool = False,
         pinned_only: bool = False,
     ) -> list[Card]:
-        clauses: list[str] = []
+        clauses: list[str] = ["deleted_at = ''"]
         parameters: list[object] = []
         if game is not None and game.strip():
             clauses.append("game = ?")
@@ -134,8 +145,43 @@ class CardStore:
         return [self._row_to_card(row) for row in rows]
 
     def get(self, card_id: int) -> Card | None:
-        row = self._connection.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+        row = self._connection.execute(
+            "SELECT * FROM cards WHERE id = ? AND deleted_at = ''", (card_id,)
+        ).fetchone()
         return self._row_to_card(row) if row else None
+
+    def get_deleted(self, card_id: int) -> Card | None:
+        row = self._connection.execute(
+            "SELECT * FROM cards WHERE id = ? AND deleted_at != ''", (card_id,)
+        ).fetchone()
+        return self._row_to_card(row) if row else None
+
+    def list_deleted(self, query: str | None = None) -> list[Card]:
+        parameters: list[object] = []
+        search = ""
+        if query is not None and query.strip():
+            pattern = f"%{query.strip()}%"
+            search = """
+                AND (title LIKE ? COLLATE NOCASE
+                     OR content LIKE ? COLLATE NOCASE
+                     OR game LIKE ? COLLATE NOCASE)
+            """
+            parameters.extend((pattern, pattern, pattern))
+        rows = self._connection.execute(
+            f"""
+            SELECT * FROM cards
+            WHERE deleted_at != ''{search}
+            ORDER BY deleted_at DESC, id DESC
+            """,
+            parameters,
+        ).fetchall()
+        return [self._row_to_card(row) for row in rows]
+
+    def deleted_count(self) -> int:
+        row = self._connection.execute(
+            "SELECT COUNT(*) AS total FROM cards WHERE deleted_at != ''"
+        ).fetchone()
+        return int(row["total"])
 
     def update_layout(
         self,
@@ -151,7 +197,7 @@ class CardStore:
             """
             UPDATE cards
             SET x = ?, y = ?, width = ?, height = ?, opacity = ?, updated_at = ?
-            WHERE id = ?
+            WHERE id = ? AND deleted_at = ''
             """,
             (
                 x,
@@ -167,7 +213,7 @@ class CardStore:
 
     def update_favorite(self, card_id: int, favorite: bool) -> bool:
         cursor = self._connection.execute(
-            "UPDATE cards SET favorite = ?, updated_at = ? WHERE id = ?",
+            "UPDATE cards SET favorite = ?, updated_at = ? WHERE id = ? AND deleted_at = ''",
             (int(favorite), utc_now(), card_id),
         )
         self._connection.commit()
@@ -175,7 +221,7 @@ class CardStore:
 
     def update_pinned(self, card_id: int, pinned: bool) -> bool:
         cursor = self._connection.execute(
-            "UPDATE cards SET pinned = ?, updated_at = ? WHERE id = ?",
+            "UPDATE cards SET pinned = ?, updated_at = ? WHERE id = ? AND deleted_at = ''",
             (int(pinned), utc_now(), card_id),
         )
         self._connection.commit()
@@ -186,17 +232,71 @@ class CardStore:
             """
             UPDATE cards
             SET title = ?, game = ?, content = ?, updated_at = ?
-            WHERE id = ?
+            WHERE id = ? AND deleted_at = ''
             """,
             (title.strip(), game.strip(), content, utc_now(), card_id),
         )
         self._connection.commit()
         return cursor.rowcount > 0
 
-    def delete(self, card_id: int) -> bool:
-        cursor = self._connection.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+    def move_to_trash(self, card_id: int) -> bool:
+        now = utc_now()
+        cursor = self._connection.execute(
+            """
+            UPDATE cards
+            SET pinned = 0, deleted_at = ?, updated_at = ?
+            WHERE id = ? AND deleted_at = ''
+            """,
+            (now, now, card_id),
+        )
         self._connection.commit()
         return cursor.rowcount > 0
+
+    def restore(self, card_id: int) -> bool:
+        cursor = self._connection.execute(
+            """
+            UPDATE cards
+            SET deleted_at = '', updated_at = ?
+            WHERE id = ? AND deleted_at != ''
+            """,
+            (utc_now(), card_id),
+        )
+        self._connection.commit()
+        return cursor.rowcount > 0
+
+    def delete_permanently(self, card_id: int) -> bool:
+        cursor = self._connection.execute(
+            "DELETE FROM cards WHERE id = ? AND deleted_at != ''", (card_id,)
+        )
+        self._connection.commit()
+        return cursor.rowcount > 0
+
+    def empty_trash(self) -> list[Card]:
+        cards = self.list_deleted()
+        self._connection.execute("DELETE FROM cards WHERE deleted_at != ''")
+        self._connection.commit()
+        return cards
+
+    def purge_deleted_before(self, cutoff: str) -> list[Card]:
+        rows = self._connection.execute(
+            "SELECT * FROM cards WHERE deleted_at != '' AND deleted_at < ?",
+            (cutoff,),
+        ).fetchall()
+        cards = [self._row_to_card(row) for row in rows]
+        if not cards:
+            return []
+        self._connection.executemany(
+            "DELETE FROM cards WHERE id = ? AND deleted_at != ''",
+            ((card.id,) for card in cards),
+        )
+        self._connection.commit()
+        return cards
+
+    def image_path_is_referenced(self, image_path: str) -> bool:
+        row = self._connection.execute(
+            "SELECT 1 FROM cards WHERE image_path = ? LIMIT 1", (image_path,)
+        ).fetchone()
+        return row is not None
 
     def close(self) -> None:
         self._connection.close()
@@ -225,4 +325,5 @@ class CardStore:
             pinned=bool(row["pinned"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
+            deleted_at=str(row["deleted_at"]),
         )

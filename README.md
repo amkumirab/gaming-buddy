@@ -33,6 +33,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Edit saved card titles, game names, and note text without recreating them
 - Copy note text or full-resolution screenshots directly to the clipboard
 - Open a screenshot's local folder from its card menu
+- Move deleted cards to a 30-day recycle bin with quick undo and restore controls
 - Detect the active Windows game and switch to its linked card profile automatically
 - Show only the active game's saved pins, plus General pins, when profiles switch
 - Back up cards, screenshots, profiles, and portable settings to a verified ZIP archive
@@ -104,12 +105,13 @@ a `.sha256` file so the installer can be checked before it is run.
 7. Enable **Click-through pins** so mouse input goes to the game.
 8. Open **Keyboard shortcuts…** to personalize controls without restarting.
 9. Right-click a saved card or pin to edit, copy, or locate its original file.
-10. Open a game, return with the panel shortcut, enter its name, and choose
+10. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
+11. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-11. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+12. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
-12. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-13. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+13. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+14. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -134,6 +136,7 @@ gaming-buddy/
 │   ├── shortcut_dialog.py # Shortcut settings dialog
 │   ├── onboarding.py   # First-run setup guide
 │   ├── startup.py      # Per-user Windows startup setting
+│   ├── trash_dialog.py # Recently deleted cards and permanent cleanup
 │   ├── workspace_backup.py # Verified backup and restore
 │   └── storage.py      # Local SQLite persistence
 ├── tests/              # Automated storage and path tests
@@ -146,6 +149,8 @@ gaming-buddy/
 ## Privacy and storage
 
 - Notes and captured images remain on the user's computer.
+- Deleted cards and their images remain recoverable locally for 30 days unless the recycle
+  bin is emptied earlier.
 - Interface preferences, shortcut mappings, and profiles use the current Windows account.
 - The prototype does not require an account or cloud connection.
 - Captures are created only after the user activates the capture shortcut.

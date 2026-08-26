@@ -31,6 +31,7 @@ class Card:
     pinned: bool = False
     created_at: str = ""
     updated_at: str = ""
+    deleted_at: str = ""
 
     def with_timestamps(self) -> Card:
         now = utc_now()

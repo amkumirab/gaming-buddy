@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal
@@ -42,6 +42,7 @@ from gaming_buddy.profiles import (
 from gaming_buddy.shortcut_dialog import ShortcutDialog
 from gaming_buddy.startup import StartupError, StartupManager
 from gaming_buddy.storage import CardStore
+from gaming_buddy.trash_dialog import TrashDialog, remove_card_image_if_unused
 from gaming_buddy.workspace_backup import (
     BackupError,
     create_workspace_backup,
@@ -70,6 +71,10 @@ class Dashboard(QMainWindow):
         self.pins: dict[int, PinWidget] = {}
         self.capture_overlay: SelectionOverlay | None = None
         self._really_quit = False
+        self._last_deleted_card_id: int | None = None
+        self.undo_timer = QTimer(self)
+        self.undo_timer.setSingleShot(True)
+        self.undo_timer.timeout.connect(self._hide_undo)
 
         self.setWindowTitle("Gaming Buddy")
         self.setMinimumSize(430, 730)
@@ -79,6 +84,7 @@ class Dashboard(QMainWindow):
         self._build_tray()
         self._restore_settings()
         self.refresh_cards()
+        QTimer.singleShot(0, self._purge_expired_trash)
         QTimer.singleShot(0, self.restore_workspace)
         QTimer.singleShot(0, self.game_detector.start)
         QTimer.singleShot(350, self._show_first_run_setup)
@@ -195,11 +201,16 @@ class Dashboard(QMainWindow):
         library_header = QHBoxLayout()
         library_label = QLabel("SAVED CARDS")
         library_label.setObjectName("section")
+        self.trash_button = QPushButton()
+        self.trash_button.setObjectName("compact")
+        self.trash_button.setToolTip("Open recently deleted cards")
+        self.trash_button.clicked.connect(self.open_trash)
         self.filter_current = QCheckBox("Current game only")
         self.filter_current.toggled.connect(self.refresh_cards)
         self.filter_favorites = QCheckBox("Favorites")
         self.filter_favorites.toggled.connect(self.refresh_cards)
         library_header.addWidget(library_label)
+        library_header.addWidget(self.trash_button)
         library_header.addStretch(1)
         library_header.addWidget(self.filter_favorites)
         library_header.addWidget(self.filter_current)
@@ -210,6 +221,21 @@ class Dashboard(QMainWindow):
         self.search_cards.setClearButtonEnabled(True)
         self.search_cards.textChanged.connect(self.refresh_cards)
         layout.addWidget(self.search_cards)
+
+        self.undo_bar = QFrame()
+        self.undo_bar.setObjectName("undoBar")
+        undo_layout = QHBoxLayout(self.undo_bar)
+        undo_layout.setContentsMargins(10, 6, 6, 6)
+        self.undo_label = QLabel()
+        self.undo_label.setObjectName("muted")
+        self.undo_label.setWordWrap(True)
+        undo_button = QPushButton("Undo")
+        undo_button.setObjectName("compact")
+        undo_button.clicked.connect(self._undo_delete)
+        undo_layout.addWidget(self.undo_label, 1)
+        undo_layout.addWidget(undo_button)
+        self.undo_bar.hide()
+        layout.addWidget(self.undo_bar)
 
         self.card_list = QListWidget()
         self.card_list.itemDoubleClicked.connect(self._pin_selected)
@@ -252,6 +278,8 @@ class Dashboard(QMainWindow):
         backup_action.triggered.connect(self.backup_workspace)
         restore_action = QAction("Restore backup…", menu)
         restore_action.triggered.connect(self.restore_backup)
+        trash_action = QAction("Recently deleted…", menu)
+        trash_action.triggered.connect(self.open_trash)
         getting_started_action = QAction("Getting started…", menu)
         getting_started_action.triggered.connect(self.show_getting_started)
         self.launch_at_sign_in_action = QAction("Launch at Windows sign-in", menu)
@@ -271,6 +299,7 @@ class Dashboard(QMainWindow):
         menu.addSeparator()
         menu.addAction(backup_action)
         menu.addAction(restore_action)
+        menu.addAction(trash_action)
         menu.addSeparator()
         menu.addAction(getting_started_action)
         menu.addAction(self.launch_at_sign_in_action)
@@ -705,6 +734,7 @@ class Dashboard(QMainWindow):
                 "Saved in the restored workspace" if card.pinned else "Double-click to pin"
             )
             self.card_list.addItem(item)
+        self._update_trash_button()
 
     def _selected_card(self) -> Card | None:
         item = self.card_list.currentItem()
@@ -739,7 +769,7 @@ class Dashboard(QMainWindow):
         )
         menu.addSeparator()
         pin_action = menu.addAction("Unpin card" if card.pinned else "Pin card")
-        delete_action = menu.addAction("Delete card")
+        delete_action = menu.addAction("Move to trash")
         action = menu.exec(self.card_list.mapToGlobal(position))  # type: ignore[arg-type]
         if action is edit_action:
             self._edit_card(card)
@@ -817,17 +847,60 @@ class Dashboard(QMainWindow):
     def _delete_card(self, card: Card) -> None:
         if card.id is None:
             return
+        if not self.store.move_to_trash(card.id):
+            self.statusBar().showMessage("The selected card is no longer available", 2500)
+            return
         pin = self.pins.pop(card.id, None)
         if pin is not None:
             pin.close()
             pin.deleteLater()
-        self.store.delete(card.id)
-        if card.kind is CardKind.IMAGE and card.image_path:
-            try:
-                Path(card.image_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+        self._last_deleted_card_id = card.id
+        self.undo_label.setText(f'“{card.title}” moved to Recently Deleted')
+        self.undo_bar.show()
+        self.undo_timer.start(10000)
         self.refresh_cards()
+
+    def _undo_delete(self) -> None:
+        card_id = self._last_deleted_card_id
+        if card_id is None or not self.store.restore(card_id):
+            self._hide_undo()
+            self.statusBar().showMessage("This card can no longer be restored", 2500)
+            return
+        self._hide_undo()
+        self.refresh_cards()
+        self.statusBar().showMessage("Card restored", 2500)
+
+    def _hide_undo(self) -> None:
+        self.undo_timer.stop()
+        self._last_deleted_card_id = None
+        if hasattr(self, "undo_bar"):
+            self.undo_bar.hide()
+
+    def open_trash(self, _checked: bool = False) -> None:
+        self._purge_expired_trash()
+        dialog = TrashDialog(self.store, self.captures_dir, self)
+        dialog.exec()
+        if (
+            self._last_deleted_card_id is not None
+            and self.store.get_deleted(self._last_deleted_card_id) is None
+        ):
+            self._hide_undo()
+        self.refresh_cards()
+
+    def _update_trash_button(self) -> None:
+        if hasattr(self, "trash_button"):
+            self.trash_button.setText(f"Deleted ({self.store.deleted_count()})")
+
+    def _purge_expired_trash(self) -> None:
+        cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat(timespec="seconds")
+        cards = self.store.purge_deleted_before(cutoff)
+        for card in cards:
+            remove_card_image_if_unused(self.store, card, self.captures_dir)
+        if cards:
+            self.refresh_cards()
+            self.statusBar().showMessage(
+                f"Permanently removed {len(cards)} expired deleted card(s)", 3000
+            )
 
     def set_click_through(self, enabled: bool) -> None:
         self.settings.setValue("click_through", enabled)
