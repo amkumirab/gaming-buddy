@@ -4,7 +4,19 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QImage, QPixmap
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDragLeaveEvent,
+    QDropEvent,
+    QIcon,
+    QImage,
+    QKeyEvent,
+    QKeySequence,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -29,6 +41,16 @@ from PySide6.QtWidgets import (
 from gaming_buddy.capture import SelectionOverlay, begin_capture
 from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
+from gaming_buddy.image_import import (
+    ImageImport,
+    ImageImportError,
+    discard_duplicate_images,
+    image_file_digest,
+    load_clipboard_image,
+    load_image_file,
+    local_image_paths,
+    save_imported_image,
+)
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.onboarding import OnboardingDialog
 from gaming_buddy.pin import PinWidget
@@ -80,6 +102,7 @@ class Dashboard(QMainWindow):
         self.setMinimumSize(430, 730)
         self.resize(470, 900)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setAcceptDrops(True)
         self._build_ui()
         self._build_tray()
         self._restore_settings()
@@ -155,9 +178,13 @@ class Dashboard(QMainWindow):
         capture_button = QPushButton("Capture area")
         capture_button.setObjectName("primary")
         capture_button.clicked.connect(self.start_capture)
+        import_button = QPushButton("Import image…")
+        import_button.setToolTip("Choose image files, drag them here, or paste with Ctrl+V")
+        import_button.clicked.connect(self.choose_image_files)
         note_buttons.addWidget(save_button)
         note_buttons.addWidget(pin_button)
         note_buttons.addWidget(capture_button)
+        note_buttons.addWidget(import_button)
         layout.addLayout(note_buttons)
 
         controls = QHBoxLayout()
@@ -266,6 +293,10 @@ class Dashboard(QMainWindow):
         show_action.triggered.connect(self.show_panel)
         capture_action = QAction("Capture area", menu)
         capture_action.triggered.connect(self.start_capture)
+        paste_image_action = QAction("Paste image", menu)
+        paste_image_action.triggered.connect(self.paste_image)
+        import_image_action = QAction("Import image…", menu)
+        import_image_action.triggered.connect(self.choose_image_files)
         show_pins_action = QAction("Show saved pins", menu)
         show_pins_action.triggered.connect(self.show_all_pins)
         hide_pins_action = QAction("Hide all pins", menu)
@@ -290,6 +321,8 @@ class Dashboard(QMainWindow):
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
         menu.addAction(capture_action)
+        menu.addAction(paste_image_action)
+        menu.addAction(import_image_action)
         menu.addSeparator()
         menu.addAction(show_pins_action)
         menu.addAction(hide_pins_action)
@@ -643,6 +676,144 @@ class Dashboard(QMainWindow):
             f"Saved lossless PNG · {image.width()} × {image.height()} px", 3500
         )
 
+    def choose_image_files(self, _checked: bool = False) -> None:
+        filenames, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Import images",
+            str(Path.home() / "Pictures"),
+            "Images (*.png *.jpg *.jpeg *.bmp *.webp)",
+        )
+        if filenames:
+            self._import_image_files([Path(filename) for filename in filenames])
+
+    def paste_image(self, _checked: bool = False) -> None:
+        clipboard = QApplication.clipboard()
+        mime_data = clipboard.mimeData()
+        paths = local_image_paths(mime_data)
+        if paths:
+            self._import_image_files(paths)
+            return
+        if not mime_data.hasImage():
+            self.statusBar().showMessage("Clipboard does not contain an image", 2500)
+            return
+        try:
+            imported = load_clipboard_image(clipboard.image())
+        except ImageImportError as exc:
+            QMessageBox.warning(self, "Paste failed", str(exc))
+            return
+        self._import_images([imported])
+
+    def _import_image_files(self, paths: list[Path]) -> None:
+        imported: list[ImageImport] = []
+        errors: list[str] = []
+        for path in paths:
+            try:
+                imported.append(load_image_file(path))
+            except ImageImportError as exc:
+                errors.append(str(exc))
+        if errors:
+            details = "\n".join(f"• {message}" for message in errors[:6])
+            if len(errors) > 6:
+                details += f"\n• …and {len(errors) - 6} more"
+            QMessageBox.warning(self, "Some images were skipped", details)
+        if imported:
+            self._import_images(imported)
+
+    def _import_images(self, imported: list[ImageImport]) -> None:
+        known_digests = self._known_image_digests()
+        unique, duplicates = discard_duplicate_images(imported, known_digests)
+        if not unique:
+            message = "This image is already saved"
+            if len(imported) > 1:
+                message = "All selected images are already saved"
+            self.statusBar().showMessage(f"{message}, including Recently Deleted", 3500)
+            return
+
+        pin_immediately = self._choose_image_import_action(unique, duplicates)
+        if pin_immediately is None:
+            return
+
+        cards: list[Card] = []
+        failures: list[str] = []
+        game = self.game_input.text().strip() or "General"
+        for candidate in unique:
+            try:
+                path = save_imported_image(candidate, self.captures_dir)
+            except ImageImportError as exc:
+                failures.append(f"{candidate.source_name}: {exc}")
+                continue
+            card = Card(
+                id=None,
+                kind=CardKind.IMAGE,
+                game=game,
+                title=candidate.title,
+                image_path=str(path),
+                opacity=self.opacity_slider.value() / 100,
+                width=max(240, min(520, candidate.image.width())),
+                height=max(150, min(380, candidate.image.height() + 45)),
+            )
+            self.store.add(card)
+            cards.append(card)
+            if pin_immediately:
+                self.show_pin(card)
+
+        self.refresh_cards()
+        if failures:
+            QMessageBox.warning(self, "Import incomplete", "\n".join(failures[:6]))
+        if cards:
+            action = "Imported and pinned" if pin_immediately else "Imported"
+            skipped = f" · {duplicates} duplicate(s) skipped" if duplicates else ""
+            self.statusBar().showMessage(f"{action} {len(cards)} image(s){skipped}", 4000)
+
+    def _known_image_digests(self) -> set[str]:
+        digests: set[str] = set()
+        cards = [*self.store.list(), *self.store.list_deleted()]
+        for card in cards:
+            if card.kind is not CardKind.IMAGE or not card.image_path:
+                continue
+            digest = image_file_digest(Path(card.image_path))
+            if digest:
+                digests.add(digest)
+        return digests
+
+    def _choose_image_import_action(
+        self, imported: list[ImageImport], duplicates: int
+    ) -> bool | None:
+        count = len(imported)
+        first = imported[0]
+        box = QMessageBox(self)
+        box.setWindowTitle("Import image" if count == 1 else "Import images")
+        box.setIconPixmap(
+            QPixmap.fromImage(first.image).scaled(
+                220,
+                150,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        if count == 1:
+            box.setText(first.source_name)
+            box.setInformativeText(
+                f"{first.image.width()} × {first.image.height()} px\n"
+                "Save this image to the current game or pin it immediately?"
+            )
+        else:
+            duplicate_note = f"\n{duplicates} duplicate(s) will be skipped." if duplicates else ""
+            box.setText(f"Import {count} images?")
+            box.setInformativeText(
+                "Save them to the current game or pin them immediately?" + duplicate_note
+            )
+        save_button = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        pin_button = box.addButton("Save and pin", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is save_button:
+            return False
+        if clicked is pin_button:
+            return True
+        return None
+
     def show_pin(self, card: Card, *, persist: bool = True) -> None:
         if card.id is None:
             return
@@ -927,6 +1098,35 @@ class Dashboard(QMainWindow):
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.toggle_panel()
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if local_image_paths(event.mimeData()):
+            event.acceptProposedAction()
+            self.statusBar().showMessage("Drop image files to import them")
+            return
+        super().dragEnterEvent(event)
+
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
+        self.statusBar().clearMessage()
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        paths = local_image_paths(event.mimeData())
+        if not paths:
+            super().dropEvent(event)
+            return
+        event.acceptProposedAction()
+        self.statusBar().clearMessage()
+        self._import_image_files(paths)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.matches(QKeySequence.StandardKey.Paste):
+            mime_data = QApplication.clipboard().mimeData()
+            if mime_data.hasImage() or local_image_paths(mime_data):
+                self.paste_image()
+                event.accept()
+                return
+        super().keyPressEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.settings.setValue("window_geometry", self.saveGeometry())

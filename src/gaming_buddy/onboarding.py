@@ -59,9 +59,10 @@ class OnboardingDialog(QDialog):
         layout.addWidget(
             self._step(
                 "1",
-                "Capture a clue",
+                "Capture or import a clue",
                 f"Press {shortcuts['capture_area']}, drag around any map, code, or puzzle, "
-                "then release to save a lossless screenshot.",
+                "then release to save a lossless screenshot. You can also drag image files "
+                "onto the panel or paste an image with Ctrl+V.",
             )
         )
         layout.addWidget(
