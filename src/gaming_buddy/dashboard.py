@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -41,6 +42,11 @@ from PySide6.QtWidgets import (
 from gaming_buddy.capture import SelectionOverlay, begin_capture
 from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
+from gaming_buddy.image_annotation import (
+    AnnotationDialog,
+    AnnotationSaveError,
+    save_annotated_image,
+)
 from gaming_buddy.image_import import (
     ImageImport,
     ImageImportError,
@@ -833,6 +839,7 @@ class Dashboard(QMainWindow):
             self._unpin_card,
             self._delete_card,
             self._edit_card,
+            self._annotate_card,
             self._copy_card,
             self._open_card_location,
         )
@@ -931,8 +938,10 @@ class Dashboard(QMainWindow):
         copy_action = menu.addAction(
             "Copy image" if card.kind is CardKind.IMAGE else "Copy note text"
         )
+        annotate_action = None
         open_location_action = None
         if card.kind is CardKind.IMAGE:
+            annotate_action = menu.addAction("Annotate image…")
             open_location_action = menu.addAction("Open file location")
         menu.addSeparator()
         favorite_action = menu.addAction(
@@ -946,6 +955,8 @@ class Dashboard(QMainWindow):
             self._edit_card(card)
         elif action is copy_action:
             self._copy_card(card)
+        elif annotate_action is not None and action is annotate_action:
+            self._annotate_card(card)
         elif open_location_action is not None and action is open_location_action:
             self._open_card_location(card)
         elif action is favorite_action:
@@ -1006,6 +1017,61 @@ class Dashboard(QMainWindow):
             return
         clipboard.setImage(image)
         self.statusBar().showMessage("Screenshot copied to clipboard", 2500)
+
+    def _annotate_card(self, card: Card) -> None:
+        source_path = Path(card.image_path)
+        if card.kind is not CardKind.IMAGE or not source_path.is_file():
+            QMessageBox.warning(
+                self,
+                "Image unavailable",
+                "The screenshot file could not be found.",
+            )
+            return
+        try:
+            dialog = AnnotationDialog(source_path, self)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Open failed", str(exc))
+            return
+        if not dialog.exec():
+            return
+
+        image = dialog.annotated_image
+        try:
+            destination = save_annotated_image(image, self.captures_dir)
+        except AnnotationSaveError as exc:
+            QMessageBox.warning(self, "Save failed", str(exc))
+            return
+
+        annotated = Card(
+            id=None,
+            kind=CardKind.IMAGE,
+            game=card.game or "General",
+            title=f"{card.title} · Annotated"[:120],
+            image_path=str(destination),
+            opacity=card.opacity,
+            width=max(240, min(520, image.width())),
+            height=max(150, min(380, image.height() + 45)),
+        )
+        try:
+            self.store.add(annotated)
+        except sqlite3.Error:
+            destination.unlink(missing_ok=True)
+            QMessageBox.warning(
+                self,
+                "Save failed",
+                "The annotated copy could not be added to the library.",
+            )
+            return
+
+        if dialog.pin_after_save:
+            self.show_pin(annotated)
+        self.refresh_cards()
+        message = (
+            "Annotated copy saved and pinned"
+            if dialog.pin_after_save
+            else "Annotated copy saved"
+        )
+        self.statusBar().showMessage(message, 3500)
 
     def _open_card_location(self, card: Card) -> None:
         path = Path(card.image_path)

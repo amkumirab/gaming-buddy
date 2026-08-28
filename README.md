@@ -24,6 +24,8 @@ game window. The prototype is designed for quick interaction and stores its data
 - Capture a region at the monitor's native pixel resolution and pin it above the game
 - Import PNG, JPEG, BMP, and WebP images by file picker, drag and drop, or clipboard paste
 - Preserve imported files at their original quality and skip duplicate image content
+- Annotate screenshots with a pen, arrows, rectangles, text, and a pixel-restoring eraser
+- Undo, redo, or reset edits and save the result as a new lossless copy
 - Create, save, and pin quick text notes
 - Move and resize every pinned card
 - Open screenshots at full resolution with Fit, 100%, and zoom controls
@@ -103,19 +105,21 @@ a `.sha256` file so the installer can be checked before it is run.
 3. Choose **Capture area**, drag around a clue or map, and release.
 4. Choose **Import image…**, drag image files onto the panel, or paste an image with `Ctrl+V`.
    Select **Save** or **Save and pin** after checking the preview.
-5. Drag pins by their header and resize them from the bottom-right corner.
-6. Double-click a pinned image to inspect the lossless original at full resolution.
-7. Use **Hide all pins** to clear the screen without losing the saved workspace.
-8. Enable **Click-through pins** so mouse input goes to the game.
-9. Open **Keyboard shortcuts…** to personalize controls without restarting.
-10. Right-click a saved card or pin to edit, copy, or locate its original file.
-11. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
-12. Open a game, return with the panel shortcut, enter its name, and choose
+5. Right-click an image card or pin and choose **Annotate image…**. Mark it with a pen,
+   arrow, rectangle, text, or eraser, then choose **Save copy** or **Save and pin**.
+6. Drag pins by their header and resize them from the bottom-right corner.
+7. Double-click a pinned image to inspect the lossless original at full resolution.
+8. Use **Hide all pins** to clear the screen without losing the saved workspace.
+9. Enable **Click-through pins** so mouse input goes to the game.
+10. Open **Keyboard shortcuts…** to personalize controls without restarting.
+11. Right-click a saved card or pin to edit, copy, or locate its original file.
+12. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
+13. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-13. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+14. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
-14. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-15. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+15. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+16. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -137,6 +141,7 @@ gaming-buddy/
 │   ├── profiles.py     # Active-game detection and profile mappings
 │   ├── profile_dialog.py # Profile manager
 │   ├── hotkeys.py      # Global keyboard shortcuts
+│   ├── image_annotation.py # Non-destructive screenshot annotation tools
 │   ├── image_import.py # Lossless image import and duplicate checks
 │   ├── shortcut_dialog.py # Shortcut settings dialog
 │   ├── onboarding.py   # First-run setup guide
@@ -160,6 +165,7 @@ gaming-buddy/
 - The prototype does not require an account or cloud connection.
 - Captures are created only after the user activates the capture shortcut.
 - Imported images are copied into the local capture library only after confirmation.
+- Screenshot annotations are saved as new local PNG files; the source image is unchanged.
 - Active-game detection reads only the foreground window title, process ID, and executable name.
 - Automatic profile switching is disabled by default and profile links remain local.
 - Launch at sign-in is optional and uses the current user's Windows startup entry.

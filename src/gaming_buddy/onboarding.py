@@ -68,9 +68,10 @@ class OnboardingDialog(QDialog):
         layout.addWidget(
             self._step(
                 "2",
-                "Keep it on screen",
-                "Move and resize pinned cards, adjust their opacity, or enable click-through "
-                "when you want mouse input to reach the game.",
+                "Mark it up and keep it on screen",
+                "Right-click an image to add arrows, text, or highlights. Then move and "
+                "resize its pin, adjust opacity, or enable click-through when you want mouse "
+                "input to reach the game.",
             )
         )
         layout.addWidget(

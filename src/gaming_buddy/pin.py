@@ -192,6 +192,7 @@ class PinWidget(QWidget):
         on_unpin: Callable[[Card], None],
         on_delete: Callable[[Card], None],
         on_edit: Callable[[Card], None],
+        on_annotate: Callable[[Card], None],
         on_copy: Callable[[Card], None],
         on_open_location: Callable[[Card], None],
     ) -> None:
@@ -201,6 +202,7 @@ class PinWidget(QWidget):
         self._on_unpin = on_unpin
         self._on_delete = on_delete
         self._on_edit = on_edit
+        self._on_annotate = on_annotate
         self._on_copy = on_copy
         self._on_open_location = on_open_location
         self._drag_origin: QPoint | None = None
@@ -301,6 +303,9 @@ class PinWidget(QWidget):
         copy.triggered.connect(lambda: self._on_copy(self.card))
         menu.addAction(copy)
         if self.card.kind is CardKind.IMAGE:
+            annotate = QAction("Annotate image…", menu)
+            annotate.triggered.connect(lambda: self._on_annotate(self.card))
+            menu.addAction(annotate)
             open_location = QAction("Open file location", menu)
             open_location.triggered.connect(lambda: self._on_open_location(self.card))
             menu.addAction(open_location)

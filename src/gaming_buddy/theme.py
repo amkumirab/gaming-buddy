@@ -64,14 +64,14 @@ QLabel#section {
     font-size: 12px;
     font-weight: 700;
 }
-QLineEdit, QTextEdit, QListWidget, QTableWidget {
+QLineEdit, QTextEdit, QListWidget, QTableWidget, QComboBox {
     background: #0d0b14;
     border: 1px solid #39304d;
     border-radius: 10px;
     padding: 9px;
     selection-background-color: #7657ff;
 }
-QLineEdit:focus, QTextEdit:focus, QListWidget:focus, QTableWidget:focus {
+QLineEdit:focus, QTextEdit:focus, QListWidget:focus, QTableWidget:focus, QComboBox:focus {
     border: 1px solid #8a6cff;
 }
 QPushButton {
@@ -83,6 +83,10 @@ QPushButton {
 }
 QPushButton:hover { background: #352d4c; }
 QPushButton:pressed { background: #201b2e; }
+QPushButton:checked {
+    background: #7657ff;
+    border-color: #947fff;
+}
 QPushButton#primary {
     background: #7657ff;
     border-color: #947fff;
@@ -91,6 +95,12 @@ QPushButton#primary:hover { background: #866cff; }
 QPushButton#danger { color: #ff9da8; }
 QPushButton#compact { padding: 5px 9px; }
 QCheckBox { spacing: 8px; color: #c9c1dc; }
+QComboBox::drop-down { border: none; width: 24px; }
+QComboBox QAbstractItemView {
+    background: #191522;
+    border: 1px solid #403653;
+    selection-background-color: #7657ff;
+}
 QSlider::groove:horizontal {
     height: 5px;
     background: #39304d;
