@@ -59,3 +59,30 @@ def test_detector_tracks_only_external_applications():
         "browser.exe",
     ]
     assert detector.last_external_application == ActiveApplication("browser.exe", "Browser", 40)
+
+
+def test_detector_reports_all_foreground_changes_except_its_own_window():
+    QCoreApplication.instance() or QCoreApplication([])
+    applications = iter(
+        (
+            ActiveApplication("gaming-buddy.exe", "Gaming Buddy", 10),
+            ActiveApplication("explorer.exe", "Desktop", 20),
+            ActiveApplication("Control_DX12.EXE", "Control", 30),
+            ActiveApplication("control_dx12.exe", "Control", 30),
+            ActiveApplication("discord.exe", "Discord", 40),
+            None,
+        )
+    )
+    detector = ActiveGameDetector(reader=lambda: next(applications), own_process_id=10)
+    foreground: list[ActiveApplication | None] = []
+    detector.foreground_changed.connect(foreground.append)
+
+    for _ in range(6):
+        detector.poll_now()
+
+    assert foreground == [
+        ActiveApplication("explorer.exe", "Desktop", 20),
+        ActiveApplication("control_dx12.exe", "Control", 30),
+        ActiveApplication("discord.exe", "Discord", 40),
+        None,
+    ]

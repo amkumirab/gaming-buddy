@@ -79,7 +79,8 @@ class OnboardingDialog(QDialog):
                 "3",
                 "Return without leaving the game",
                 f"Press {shortcuts['toggle_panel']} to show or hide the panel. The tray icon "
-                "keeps capture, pins, profiles, and this guide close by.",
+                "keeps capture, pins, profiles, and this guide close by. Optional focus-aware "
+                "hiding keeps pins off other apps while you are away from a linked game.",
             )
         )
 

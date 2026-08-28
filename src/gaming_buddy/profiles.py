@@ -152,6 +152,7 @@ class GameProfileStore:
 
 class ActiveGameDetector(QObject):
     active_changed = Signal(object)
+    foreground_changed = Signal(object)
 
     ignored_executables: ClassVar[set[str]] = {
         "applicationframehost.exe",
@@ -174,6 +175,7 @@ class ActiveGameDetector(QObject):
         self._own_process_id = own_process_id if own_process_id is not None else os.getpid()
         self._last_external: ActiveApplication | None = None
         self._last_identity: tuple[str, int] | None = None
+        self._last_foreground_identity: tuple[str, int] | None = None
         self._timer = QTimer(self)
         self._timer.setInterval(interval_ms)
         self._timer.timeout.connect(self.poll_now)
@@ -195,11 +197,19 @@ class ActiveGameDetector(QObject):
         except OSError:
             return
         if application is None:
+            if self._last_foreground_identity is not None:
+                self._last_foreground_identity = None
+                self.foreground_changed.emit(None)
             return
         executable = normalize_executable(application.executable)
+        application = ActiveApplication(executable, application.title, application.process_id)
+        foreground_identity = (application.executable, application.process_id)
+        if foreground_identity != self._last_foreground_identity:
+            self._last_foreground_identity = foreground_identity
+            if application.process_id != self._own_process_id:
+                self.foreground_changed.emit(application)
         if application.process_id == self._own_process_id or executable in self.ignored_executables:
             return
-        application = ActiveApplication(executable, application.title, application.process_id)
         self._last_external = application
         identity = (application.executable, application.process_id)
         if identity == self._last_identity:

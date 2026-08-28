@@ -60,6 +60,7 @@ from gaming_buddy.image_import import (
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.onboarding import OnboardingDialog
 from gaming_buddy.pin import PinWidget
+from gaming_buddy.pin_visibility import PinVisibilityController
 from gaming_buddy.profile_dialog import ProfileDialog
 from gaming_buddy.profiles import (
     ActiveApplication,
@@ -94,9 +95,17 @@ class Dashboard(QMainWindow):
         self.shortcuts = self._load_shortcuts()
         self.profile_store = GameProfileStore(self.settings)
         self.active_application: ActiveApplication | None = None
+        self._focused_game: str | None = None
         self.game_detector = ActiveGameDetector(self)
         self.game_detector.active_changed.connect(self._on_active_application)
+        self.game_detector.foreground_changed.connect(self._on_foreground_application)
         self.pins: dict[int, PinWidget] = {}
+        self._auto_hidden_pin_ids: set[int] = set()
+        self.pin_visibility = PinVisibilityController(self)
+        self.pin_visibility.auto_hide_requested.connect(self._hide_pins_automatically)
+        self.pin_visibility.auto_restore_requested.connect(
+            self._restore_pins_after_auto_hide
+        )
         self.capture_overlay: SelectionOverlay | None = None
         self._really_quit = False
         self._last_deleted_card_id: int | None = None
@@ -155,6 +164,13 @@ class Dashboard(QMainWindow):
         profile_options.addStretch(1)
         profile_options.addWidget(manage_profiles)
         layout.addLayout(profile_options)
+
+        self.auto_hide_pins = QCheckBox("Hide pins when a linked game loses focus")
+        self.auto_hide_pins.setToolTip(
+            "Keeps pins off other apps and restores them when you return to a linked game."
+        )
+        self.auto_hide_pins.toggled.connect(self.set_auto_hide_pins)
+        layout.addWidget(self.auto_hide_pins)
 
         detected_row = QHBoxLayout()
         self.detected_app = QLabel("Waiting for an active game…")
@@ -307,6 +323,9 @@ class Dashboard(QMainWindow):
         show_pins_action.triggered.connect(self.show_all_pins)
         hide_pins_action = QAction("Hide all pins", menu)
         hide_pins_action.triggered.connect(self.hide_all_pins)
+        self.auto_hide_pins_action = QAction("Hide pins outside linked games", menu)
+        self.auto_hide_pins_action.setCheckable(True)
+        self.auto_hide_pins_action.triggered.connect(self.set_auto_hide_pins)
         shortcuts_action = QAction("Keyboard shortcuts…", menu)
         shortcuts_action.triggered.connect(self.edit_shortcuts)
         profiles_action = QAction("Game profiles…", menu)
@@ -332,6 +351,7 @@ class Dashboard(QMainWindow):
         menu.addSeparator()
         menu.addAction(show_pins_action)
         menu.addAction(hide_pins_action)
+        menu.addAction(self.auto_hide_pins_action)
         menu.addSeparator()
         menu.addAction(profiles_action)
         menu.addAction(shortcuts_action)
@@ -356,6 +376,9 @@ class Dashboard(QMainWindow):
             self.restoreGeometry(geometry)
         self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
         self.auto_profiles.setChecked(self.settings.value("profiles/auto_switch", False, type=bool))
+        self.auto_hide_pins.setChecked(
+            self.settings.value("profiles/auto_hide_pins", False, type=bool)
+        )
 
     def _show_first_run_setup(self) -> None:
         completed = self.settings.value("onboarding/completed", False, type=bool)
@@ -404,6 +427,20 @@ class Dashboard(QMainWindow):
         message = "Automatic profile switching enabled" if enabled else "Profile switching paused"
         self.statusBar().showMessage(message, 2500)
 
+    def set_auto_hide_pins(self, enabled: bool) -> None:
+        self.settings.setValue("profiles/auto_hide_pins", enabled)
+        for control in (self.auto_hide_pins, self.auto_hide_pins_action):
+            blocker = QSignalBlocker(control)
+            control.setChecked(enabled)
+            del blocker
+        self.pin_visibility.set_enabled(enabled)
+        message = (
+            "Pins will hide outside linked games"
+            if enabled
+            else "Automatic pin hiding disabled"
+        )
+        self.statusBar().showMessage(message, 2500)
+
     def link_detected_application(self) -> None:
         application = self.game_detector.last_external_application
         if application is None:
@@ -419,6 +456,8 @@ class Dashboard(QMainWindow):
             self.game_input.setFocus()
             return
         self.profile_store.link(application.executable, game)
+        self._focused_game = game
+        self.pin_visibility.update_focus(True)
         self._update_detected_label(application)
         self.statusBar().showMessage(
             f"Linked {application.executable} to the {game} profile",
@@ -433,6 +472,8 @@ class Dashboard(QMainWindow):
         if self.active_application is not None:
             self._update_detected_label(self.active_application)
             game = self.profile_store.game_for(self.active_application.executable)
+            self._focused_game = game
+            self.pin_visibility.update_focus(game is not None)
             if game and self.auto_profiles.isChecked():
                 self._switch_game_profile(game)
         self.statusBar().showMessage("Game profiles updated", 2500)
@@ -443,6 +484,15 @@ class Dashboard(QMainWindow):
         game = self.profile_store.game_for(application.executable)
         if game and self.auto_profiles.isChecked():
             self._switch_game_profile(game)
+
+    def _on_foreground_application(self, application: ActiveApplication | None) -> None:
+        game = (
+            self.profile_store.game_for(application.executable)
+            if application is not None
+            else None
+        )
+        self._focused_game = game
+        self.pin_visibility.update_focus(game is not None)
 
     def _update_detected_label(self, application: ActiveApplication) -> None:
         game = self.profile_store.game_for(application.executable)
@@ -459,6 +509,10 @@ class Dashboard(QMainWindow):
             self.statusBar().showMessage(f"Switched to {game} profile", 3000)
 
     def _show_profile_workspace(self, game: str) -> None:
+        if self.pin_visibility.manually_hidden or self.pin_visibility.automatically_hidden:
+            for pin in self.pins.values():
+                pin.hide()
+            return
         for card in self.store.list(pinned_only=True):
             visible = belongs_to_profile(card.game, game)
             pin = self.pins.get(card.id) if card.id is not None else None
@@ -581,9 +635,11 @@ class Dashboard(QMainWindow):
         self._reload_restored_settings()
         self.refresh_cards()
         self.restore_workspace()
-        if self.active_application is not None and self.auto_profiles.isChecked():
+        if self.active_application is not None:
             game = self.profile_store.game_for(self.active_application.executable)
-            if game:
+            self._focused_game = game
+            self.pin_visibility.update_focus(game is not None)
+            if game and self.auto_profiles.isChecked():
                 self._switch_game_profile(game)
         QMessageBox.information(
             self,
@@ -602,6 +658,9 @@ class Dashboard(QMainWindow):
         self.game_input.setText(str(self.settings.value("game", "")))
         self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
         self.auto_profiles.setChecked(self.settings.value("profiles/auto_switch", False, type=bool))
+        self.auto_hide_pins.setChecked(
+            self.settings.value("profiles/auto_hide_pins", False, type=bool)
+        )
 
     def _on_game_changed(self, value: str) -> None:
         self.settings.setValue("game", value)
@@ -824,6 +883,10 @@ class Dashboard(QMainWindow):
         if card.id is None:
             return
         if persist:
+            was_auto_hidden = self.pin_visibility.automatically_hidden
+            self.pin_visibility.manual_show()
+            if was_auto_hidden:
+                self._restore_pins_after_auto_hide()
             self.store.update_pinned(card.id, True)
             card.pinned = True
         existing = self.pins.get(card.id)
@@ -859,15 +922,51 @@ class Dashboard(QMainWindow):
             self.statusBar().showMessage(f"Restored {restored} saved pin(s)", 3000)
 
     def show_all_pins(self) -> None:
+        self.pin_visibility.manual_show()
+        self._auto_hidden_pin_ids.clear()
         cards = self.store.list(pinned_only=True)
         for card in cards:
             self.show_pin(card, persist=False)
         self.statusBar().showMessage(f"Showing {len(cards)} saved pin(s)", 2500)
 
     def hide_all_pins(self) -> None:
+        self.pin_visibility.manual_hide()
+        self._auto_hidden_pin_ids.clear()
         for pin in self.pins.values():
             pin.hide()
         self.statusBar().showMessage("Pins hidden; workspace is still saved", 2500)
+
+    def _hide_pins_automatically(self) -> None:
+        self._auto_hidden_pin_ids = {
+            card_id for card_id, pin in self.pins.items() if pin.isVisible()
+        }
+        for pin in self.pins.values():
+            pin.hide()
+        if self._auto_hidden_pin_ids:
+            self.statusBar().showMessage(
+                "Pins hidden until you return to a linked game",
+                2500,
+            )
+
+    def _restore_pins_after_auto_hide(self) -> None:
+        if self.pin_visibility.manually_hidden:
+            return
+        if self.auto_profiles.isChecked() and self._focused_game:
+            self._auto_hidden_pin_ids.clear()
+            self._show_profile_workspace(self._focused_game)
+            return
+        cards = {
+            card.id: card for card in self.store.list(pinned_only=True) if card.id is not None
+        }
+        restored = 0
+        for card_id in self._auto_hidden_pin_ids:
+            card = cards.get(card_id)
+            if card is not None:
+                self.show_pin(card, persist=False)
+                restored += 1
+        self._auto_hidden_pin_ids.clear()
+        if restored:
+            self.statusBar().showMessage(f"Restored {restored} pin(s)", 2500)
 
     def _unpin_card(self, card: Card) -> None:
         if card.id is None:

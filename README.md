@@ -40,6 +40,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Move deleted cards to a 30-day recycle bin with quick undo and restore controls
 - Detect the active Windows game and switch to its linked card profile automatically
 - Show only the active game's saved pins, plus General pins, when profiles switch
+- Optionally hide pins outside linked games and restore them when gameplay resumes
 - Back up cards, screenshots, profiles, and portable settings to a verified ZIP archive
 - Restore backups by safely merging cards and skipping exact duplicates
 - Restore pinned cards, positions, sizes, and opacity after restarting
@@ -116,10 +117,12 @@ a `.sha256` file so the installer can be checked before it is run.
 12. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
 13. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-14. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+14. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
+    Manual **Hide all pins** remains in effect when you return to the game.
+15. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
-15. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-16. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+16. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+17. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -143,6 +146,7 @@ gaming-buddy/
 │   ├── hotkeys.py      # Global keyboard shortcuts
 │   ├── image_annotation.py # Non-destructive screenshot annotation tools
 │   ├── image_import.py # Lossless image import and duplicate checks
+│   ├── pin_visibility.py # Focus-aware pin visibility controller
 │   ├── shortcut_dialog.py # Shortcut settings dialog
 │   ├── onboarding.py   # First-run setup guide
 │   ├── startup.py      # Per-user Windows startup setting
@@ -168,6 +172,7 @@ gaming-buddy/
 - Screenshot annotations are saved as new local PNG files; the source image is unchanged.
 - Active-game detection reads only the foreground window title, process ID, and executable name.
 - Automatic profile switching is disabled by default and profile links remain local.
+- Focus-aware pin hiding is disabled by default and works only with locally linked games.
 - Launch at sign-in is optional and uses the current user's Windows startup entry.
 - Backups are written only to the location selected by the user and are never uploaded.
 - Backup ZIP files are not encrypted, so they should be stored in a trusted location.
