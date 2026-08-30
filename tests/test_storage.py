@@ -170,18 +170,22 @@ def test_pinned_workspace_survives_database_reopen(tmp_path):
             )
         )
         assert store.update_pinned(card.id, True)
+        assert store.update_locked(card.id, True)
 
     with CardStore(database) as reopened:
         pinned = reopened.list(pinned_only=True)
         assert len(pinned) == 1
         assert pinned[0].title == "Persistent clue"
         assert pinned[0].pinned is True
+        assert pinned[0].locked is True
         assert (pinned[0].x, pinned[0].y, pinned[0].width, pinned[0].height) == (
             420,
             180,
             480,
             260,
         )
+        assert reopened.unlock_all_pins() == 1
+        assert reopened.get(pinned[0].id).locked is False
         assert reopened.update_pinned(pinned[0].id, False)
         assert reopened.list(pinned_only=True) == []
         assert len(reopened.list()) == 1
@@ -224,9 +228,11 @@ def test_existing_database_gets_workspace_columns(tmp_path):
         assert cards[0].title == "Old clue"
         assert cards[0].favorite is False
         assert cards[0].pinned is False
+        assert cards[0].locked is False
         assert cards[0].deleted_at == ""
         assert store.update_favorite(cards[0].id, True)
         assert store.update_pinned(cards[0].id, True)
+        assert store.update_locked(cards[0].id, True)
 
 
 def test_deleted_cards_can_be_searched_and_purged_by_age(tmp_path):

@@ -70,8 +70,8 @@ class OnboardingDialog(QDialog):
                 "2",
                 "Mark it up and keep it on screen",
                 "Right-click an image to add arrows, text, or highlights. Then move and "
-                "resize its pin, adjust opacity, or enable click-through when you want mouse "
-                "input to reach the game.",
+                "resize its pin, snap it to a screen edge, and lock the layout. Adjust opacity "
+                "or enable click-through when you want mouse input to reach the game.",
             )
         )
         layout.addWidget(

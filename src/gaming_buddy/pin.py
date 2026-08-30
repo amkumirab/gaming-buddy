@@ -56,6 +56,43 @@ def fit_geometry_to_screens(
     return QRect(x, y, width, height)
 
 
+def snap_geometry_to_screen_edges(
+    requested: QRect,
+    screens: list[QRect],
+    *,
+    threshold: int = 16,
+) -> QRect:
+    if not screens or threshold < 0:
+        return QRect(requested)
+
+    def overlap_area(screen: QRect) -> int:
+        overlap = requested.intersected(screen)
+        return max(0, overlap.width()) * max(0, overlap.height())
+
+    target = max(screens, key=overlap_area)
+    if overlap_area(target) == 0:
+        center = requested.center()
+
+        def center_distance(screen: QRect) -> int:
+            screen_center = screen.center()
+            return (center.x() - screen_center.x()) ** 2 + (
+                center.y() - screen_center.y()
+            ) ** 2
+
+        target = min(screens, key=center_distance)
+
+    snapped = QRect(requested)
+    if abs(requested.left() - target.left()) <= threshold:
+        snapped.moveLeft(target.left())
+    elif abs(requested.right() - target.right()) <= threshold:
+        snapped.moveRight(target.right())
+    if abs(requested.top() - target.top()) <= threshold:
+        snapped.moveTop(target.top())
+    elif abs(requested.bottom() - target.bottom()) <= threshold:
+        snapped.moveBottom(target.bottom())
+    return snapped
+
+
 class FullImageViewer(QDialog):
     """Always-on-top viewer that can display the original screenshot pixel-for-pixel."""
 
@@ -192,6 +229,7 @@ class PinWidget(QWidget):
         on_unpin: Callable[[Card], None],
         on_delete: Callable[[Card], None],
         on_edit: Callable[[Card], None],
+        on_lock_changed: Callable[[Card], None],
         on_annotate: Callable[[Card], None],
         on_copy: Callable[[Card], None],
         on_open_location: Callable[[Card], None],
@@ -202,10 +240,12 @@ class PinWidget(QWidget):
         self._on_unpin = on_unpin
         self._on_delete = on_delete
         self._on_edit = on_edit
+        self._on_lock_changed = on_lock_changed
         self._on_annotate = on_annotate
         self._on_copy = on_copy
         self._on_open_location = on_open_location
         self._drag_origin: QPoint | None = None
+        self._drag_moved = False
         self._viewer: FullImageViewer | None = None
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -232,6 +272,7 @@ class PinWidget(QWidget):
         self.setGeometry(geometry)
         self.setWindowOpacity(card.opacity)
         self._build_ui()
+        self.set_locked(card.locked, notify=False)
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
@@ -247,6 +288,10 @@ class PinWidget(QWidget):
             }
             QLabel#pinTitle { color: #d5caff; font-weight: 700; font-size: 12px; }
             QLabel#pinGame { color: #8e83a8; font-size: 10px; }
+            QLabel#pinLock {
+                color: #ffd76d; background: #352c1c; border: 1px solid #725d2e;
+                border-radius: 5px; padding: 2px 5px; font-size: 9px; font-weight: 700;
+            }
             QTextBrowser {
                 background: transparent; border: none; color: #ffffff;
                 padding: 5px; font-size: 14px;
@@ -264,7 +309,11 @@ class PinWidget(QWidget):
         game = QLabel(self.card.game or "General")
         game.setObjectName("pinGame")
         game.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._lock_indicator = QLabel("LOCKED")
+        self._lock_indicator.setObjectName("pinLock")
+        self._lock_indicator.setToolTip("Position and size are locked")
         header.addWidget(title, 1)
+        header.addWidget(self._lock_indicator)
         header.addWidget(game)
         layout.addLayout(header)
 
@@ -280,9 +329,9 @@ class PinWidget(QWidget):
 
         grip_row = QHBoxLayout()
         grip_row.addStretch(1)
-        grip = QSizeGrip(self)
-        grip.setFixedSize(16, 16)
-        grip_row.addWidget(grip)
+        self._grip = QSizeGrip(self)
+        self._grip.setFixedSize(16, 16)
+        grip_row.addWidget(self._grip)
         layout.addLayout(grip_row)
 
     def set_click_through(self, enabled: bool) -> None:
@@ -293,6 +342,10 @@ class PinWidget(QWidget):
 
     def contextMenuEvent(self, event: object) -> None:
         menu = QMenu(self)
+        lock = QAction("Unlock pin" if self.card.locked else "Lock pin position", menu)
+        lock.triggered.connect(lambda: self.set_locked(not self.card.locked))
+        menu.addAction(lock)
+        menu.addSeparator()
         edit = QAction("Edit card…", menu)
         edit.triggered.connect(lambda: self._on_edit(self.card))
         menu.addAction(edit)
@@ -343,9 +396,24 @@ class PinWidget(QWidget):
         self.setWindowOpacity(opacity)
         self._queue_save()
 
+    def set_locked(self, locked: bool, *, notify: bool = True) -> None:
+        self.card.locked = locked
+        self._drag_origin = None
+        self._drag_moved = False
+        self._grip.setEnabled(not locked)
+        self._grip.setVisible(not locked)
+        self._lock_indicator.setVisible(locked)
+        if notify:
+            self._on_lock_changed(self.card)
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and event.position().y() <= 45:
+        if (
+            not self.card.locked
+            and event.button() == Qt.MouseButton.LeftButton
+            and event.position().y() <= 45
+        ):
             self._drag_origin = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._drag_moved = False
             event.accept()
         else:
             super().mousePressEvent(event)
@@ -353,14 +421,25 @@ class PinWidget(QWidget):
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._drag_origin is not None and event.buttons() & Qt.MouseButton.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_origin)
+            self._drag_moved = True
             event.accept()
         else:
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        should_snap = self._drag_origin is not None and self._drag_moved
         self._drag_origin = None
+        self._drag_moved = False
+        if should_snap and not self.card.locked:
+            self._snap_to_screen_edges()
         self._queue_save()
         super().mouseReleaseEvent(event)
+
+    def _snap_to_screen_edges(self) -> None:
+        screens = [screen.availableGeometry() for screen in QGuiApplication.screens()]
+        snapped = snap_geometry_to_screen_edges(self.geometry(), screens)
+        if snapped != self.geometry():
+            self.setGeometry(snapped)
 
     def moveEvent(self, event: object) -> None:
         super().moveEvent(event)  # type: ignore[arg-type]

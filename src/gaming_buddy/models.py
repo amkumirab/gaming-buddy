@@ -29,6 +29,7 @@ class Card:
     height: int = 220
     favorite: bool = False
     pinned: bool = False
+    locked: bool = False
     created_at: str = ""
     updated_at: str = ""
     deleted_at: str = ""

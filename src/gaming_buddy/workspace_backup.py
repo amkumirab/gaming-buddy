@@ -341,6 +341,7 @@ def _card_to_record(card: Card, image_archive: str) -> dict[str, Any]:
         "height": card.height,
         "favorite": card.favorite,
         "pinned": card.pinned,
+        "locked": card.locked,
         "created_at": card.created_at,
         "updated_at": card.updated_at,
     }
@@ -364,6 +365,7 @@ def _record_to_card(record: dict[str, Any]) -> tuple[Card, str]:
         height=int(record.get("height", 220)),
         favorite=bool(record.get("favorite", False)),
         pinned=bool(record.get("pinned", False)),
+        locked=bool(record.get("locked", False)),
         created_at=str(record.get("created_at", "")),
         updated_at=str(record.get("updated_at", "")),
     )

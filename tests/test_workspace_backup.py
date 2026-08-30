@@ -39,6 +39,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
                 content="Turn the wheels clockwise.",
                 favorite=True,
                 pinned=True,
+                locked=True,
             )
         )
         source_store.add(
@@ -80,6 +81,8 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
         cards = restored_store.list()
         assert {card.title for card in cards} == {"Puzzle clue", "Map"}
         restored_image = next(card for card in cards if card.kind is CardKind.IMAGE)
+        restored_note = next(card for card in cards if card.kind is CardKind.NOTE)
+        assert restored_note.locked is True
         assert restored_image.image_path.startswith(str(restored_captures))
         assert restored_image.image_path != str(image_path)
         assert Path(restored_image.image_path).read_bytes() == b"lossless-image-content"

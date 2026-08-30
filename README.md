@@ -28,6 +28,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Undo, redo, or reset edits and save the result as a new lossless copy
 - Create, save, and pin quick text notes
 - Move and resize every pinned card
+- Snap pins to nearby screen edges and lock their position and size
 - Open screenshots at full resolution with Fit, 100%, and zoom controls
 - Adjust overlay opacity
 - Switch pins into click-through mode
@@ -108,12 +109,14 @@ a `.sha256` file so the installer can be checked before it is run.
    Select **Save** or **Save and pin** after checking the preview.
 5. Right-click an image card or pin and choose **Annotate image…**. Mark it with a pen,
    arrow, rectangle, text, or eraser, then choose **Save copy** or **Save and pin**.
-6. Drag pins by their header and resize them from the bottom-right corner.
+6. Drag pins by their header and resize them from the bottom-right corner. Move a pin near
+   a screen edge to snap it into place, then right-click it and choose **Lock pin position**.
 7. Double-click a pinned image to inspect the lossless original at full resolution.
 8. Use **Hide all pins** to clear the screen without losing the saved workspace.
 9. Enable **Click-through pins** so mouse input goes to the game.
 10. Open **Keyboard shortcuts…** to personalize controls without restarting.
-11. Right-click a saved card or pin to edit, copy, or locate its original file.
+11. Right-click a saved card or pin to lock, edit, copy, or locate its original file. Use
+    **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
 12. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
 13. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
@@ -176,6 +179,7 @@ gaming-buddy/
 - Launch at sign-in is optional and uses the current user's Windows startup entry.
 - Backups are written only to the location selected by the user and are never uploaded.
 - Backup ZIP files are not encrypted, so they should be stored in a trusted location.
+- Pin lock state is stored locally with the rest of each card's workspace layout.
 - Saved cards and captured images can be removed by deleting `%LOCALAPPDATA%\GamingBuddy`.
 
 ## Compatibility and fair-play note

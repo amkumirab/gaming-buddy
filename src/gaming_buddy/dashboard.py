@@ -228,8 +228,11 @@ class Dashboard(QMainWindow):
         show_pins.clicked.connect(self.show_all_pins)
         hide_pins = QPushButton("Hide all pins")
         hide_pins.clicked.connect(self.hide_all_pins)
+        unlock_pins = QPushButton("Unlock all")
+        unlock_pins.clicked.connect(self.unlock_all_pins)
         workspace_controls.addWidget(show_pins)
         workspace_controls.addWidget(hide_pins)
+        workspace_controls.addWidget(unlock_pins)
         layout.addLayout(workspace_controls)
 
         tools = QHBoxLayout()
@@ -323,6 +326,8 @@ class Dashboard(QMainWindow):
         show_pins_action.triggered.connect(self.show_all_pins)
         hide_pins_action = QAction("Hide all pins", menu)
         hide_pins_action.triggered.connect(self.hide_all_pins)
+        unlock_pins_action = QAction("Unlock all pins", menu)
+        unlock_pins_action.triggered.connect(self.unlock_all_pins)
         self.auto_hide_pins_action = QAction("Hide pins outside linked games", menu)
         self.auto_hide_pins_action.setCheckable(True)
         self.auto_hide_pins_action.triggered.connect(self.set_auto_hide_pins)
@@ -351,6 +356,7 @@ class Dashboard(QMainWindow):
         menu.addSeparator()
         menu.addAction(show_pins_action)
         menu.addAction(hide_pins_action)
+        menu.addAction(unlock_pins_action)
         menu.addAction(self.auto_hide_pins_action)
         menu.addSeparator()
         menu.addAction(profiles_action)
@@ -902,6 +908,7 @@ class Dashboard(QMainWindow):
             self._unpin_card,
             self._delete_card,
             self._edit_card,
+            self._save_pin_lock,
             self._annotate_card,
             self._copy_card,
             self._open_card_location,
@@ -935,6 +942,15 @@ class Dashboard(QMainWindow):
         for pin in self.pins.values():
             pin.hide()
         self.statusBar().showMessage("Pins hidden; workspace is still saved", 2500)
+
+    def unlock_all_pins(self) -> None:
+        unlocked = self.store.unlock_all_pins()
+        for pin in self.pins.values():
+            if pin.card.locked:
+                pin.set_locked(False, notify=False)
+        self.refresh_cards()
+        message = f"Unlocked {unlocked} pin(s)" if unlocked else "No locked pins"
+        self.statusBar().showMessage(message, 2500)
 
     def _hide_pins_automatically(self) -> None:
         self._auto_hidden_pin_ids = {
@@ -992,6 +1008,14 @@ class Dashboard(QMainWindow):
             opacity=card.opacity,
         )
 
+    def _save_pin_lock(self, card: Card) -> None:
+        if card.id is None:
+            return
+        self.store.update_locked(card.id, card.locked)
+        self.refresh_cards()
+        message = "Pin locked" if card.locked else "Pin unlocked"
+        self.statusBar().showMessage(message, 2000)
+
     def refresh_cards(self) -> None:
         if not hasattr(self, "card_list"):
             return
@@ -1005,7 +1029,10 @@ class Dashboard(QMainWindow):
             icon = f"{pinned_icon}{favorite_icon}{kind_icon}"
             game_label = card.game or "General"
             workspace_label = " · Pinned" if card.pinned else ""
-            item = QListWidgetItem(f"{icon}  {card.title}\n     {game_label}{workspace_label}")
+            lock_label = " · Locked" if card.pinned and card.locked else ""
+            item = QListWidgetItem(
+                f"{icon}  {card.title}\n     {game_label}{workspace_label}{lock_label}"
+            )
             item.setData(Qt.ItemDataRole.UserRole, card.id)
             item.setToolTip(
                 "Saved in the restored workspace" if card.pinned else "Double-click to pin"
@@ -1039,9 +1066,12 @@ class Dashboard(QMainWindow):
         )
         annotate_action = None
         open_location_action = None
+        lock_action = None
         if card.kind is CardKind.IMAGE:
             annotate_action = menu.addAction("Annotate image…")
             open_location_action = menu.addAction("Open file location")
+        if card.pinned:
+            lock_action = menu.addAction("Unlock pin" if card.locked else "Lock pin position")
         menu.addSeparator()
         favorite_action = menu.addAction(
             "Remove from favorites" if card.favorite else "Add to favorites"
@@ -1058,6 +1088,12 @@ class Dashboard(QMainWindow):
             self._annotate_card(card)
         elif open_location_action is not None and action is open_location_action:
             self._open_card_location(card)
+        elif lock_action is not None and action is lock_action:
+            card.locked = not card.locked
+            pin = self.pins.get(card.id) if card.id is not None else None
+            if pin is not None:
+                pin.set_locked(card.locked, notify=False)
+            self._save_pin_lock(card)
         elif action is favorite_action:
             self.store.update_favorite(card.id, not card.favorite)
             self.refresh_cards()

@@ -56,3 +56,14 @@ def test_release_workflow_uses_separate_write_permission() -> None:
     assert "contents: write" in publish_job
     assert "--verify-tag" in publish_job
     assert "scripts/validate_release.py" in workflow
+
+
+def test_windows_bundle_pins_compatible_qt_runtime_dependencies() -> None:
+    specification = (PROJECT_ROOT / "packaging/gaming-buddy.spec").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"VCRUNTIME140.dll"' in specification
+    assert '"MSVCP140.dll"' in specification
+    assert '"icuuc.dll", "icudt78.dll"' in specification
+    assert "console=False" in specification
