@@ -29,6 +29,7 @@ def main() -> int:
     dashboard = Dashboard(store, captures_dir)
     hotkeys = GlobalHotkeys(dashboard.shortcuts)
     hotkeys.toggle_panel.connect(dashboard.toggle_panel)
+    hotkeys.quick_finder.connect(dashboard.show_quick_finder)
     hotkeys.capture_area.connect(dashboard.start_capture)
     hotkeys.toggle_click_through.connect(dashboard.toggle_click_through)
     hotkeys.failed.connect(

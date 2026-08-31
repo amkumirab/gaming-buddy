@@ -23,6 +23,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
     source_settings.setValue("click_through", True)
     source_settings.setValue("profiles/auto_hide_pins", True)
     source_settings.setValue("shortcuts/capture_area", "Ctrl+Alt+C")
+    source_settings.setValue("shortcuts/quick_finder", "Ctrl+Alt+F")
     source_settings.setValue("window_geometry", "not portable")
 
     image_path = tmp_path / "source-captures" / "map.png"
@@ -91,6 +92,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
         assert restored_settings.value("game") == "Control"
         assert restored_settings.value("click_through", type=bool) is True
         assert restored_settings.value("profiles/auto_hide_pins", type=bool) is True
+        assert restored_settings.value("shortcuts/quick_finder") == "Ctrl+Alt+F"
         assert restored_settings.value("window_geometry") is None
 
         repeated = restore_workspace_backup(

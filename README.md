@@ -35,6 +35,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Switch pins into click-through mode
 - Organize cards by game name
 - Search saved cards by title, note text, or game
+- Find and show any saved card from a keyboard-first in-game search overlay
 - Mark important cards as favorites and filter the library
 - Edit saved card titles, game names, and note text without recreating them
 - Copy note text or full-resolution screenshots directly to the clipboard
@@ -60,6 +61,7 @@ game window. The prototype is designed for quick interaction and stores its data
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+Shift+G` | Show or hide the control panel |
+| `Ctrl+Shift+F` | Open the quick card finder |
 | `Ctrl+Shift+S` | Capture a screen region |
 | `Ctrl+Shift+L` | Toggle click-through mode for all pins |
 
@@ -117,18 +119,19 @@ a `.sha256` file so the installer can be checked before it is run.
 8. Double-click a pinned image to inspect the lossless original at full resolution.
 9. Use **Hide all pins** to clear the screen without losing the saved workspace.
 10. Enable **Click-through pins** so mouse input goes to the game.
-11. Open **Keyboard shortcuts…** to personalize controls without restarting.
-12. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
+11. Press `Ctrl+Shift+F`, type a clue or card name, and press Enter to show it immediately.
+12. Open **Keyboard shortcuts…** to personalize controls without restarting.
+13. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
     **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
-13. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
-14. Open a game, return with the panel shortcut, enter its name, and choose
+14. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
+15. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-15. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
+16. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
     Manual **Hide all pins** remains in effect when you return to the game.
-16. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+17. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
-17. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-18. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+18. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+19. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -149,6 +152,7 @@ gaming-buddy/
 │   ├── pin.py          # Movable overlay cards
 │   ├── profiles.py     # Active-game detection and profile mappings
 │   ├── profile_dialog.py # Profile manager
+│   ├── quick_finder.py # Keyboard-first saved-card search overlay
 │   ├── hotkeys.py      # Global keyboard shortcuts
 │   ├── image_annotation.py # Non-destructive screenshot annotation tools
 │   ├── image_import.py # Lossless image import and duplicate checks
@@ -172,6 +176,7 @@ gaming-buddy/
 - Deleted cards and their images remain recoverable locally for 30 days unless the recycle
   bin is emptied earlier.
 - Interface preferences, shortcut mappings, and profiles use the current Windows account.
+- Recent quick-finder searches stay in the current Windows account settings.
 - The prototype does not require an account or cloud connection.
 - Captures are created only after the user activates the capture shortcut.
 - Imported images are copied into the local capture library only after confirmation.

@@ -5,12 +5,14 @@ from PySide6.QtCore import QObject, Signal
 
 SHORTCUT_LABELS = {
     "toggle_panel": "Show or hide panel",
+    "quick_finder": "Find a saved card",
     "capture_area": "Capture screen area",
     "toggle_click_through": "Toggle click-through pins",
 }
 
 DEFAULT_SHORTCUTS = {
     "toggle_panel": "Ctrl+Shift+G",
+    "quick_finder": "Ctrl+Shift+F",
     "capture_area": "Ctrl+Shift+S",
     "toggle_click_through": "Ctrl+Shift+L",
 }
@@ -115,6 +117,7 @@ def shortcut_hooks(shortcuts: dict[str, str]) -> dict[str, str]:
 
 class GlobalHotkeys(QObject):
     toggle_panel = Signal()
+    quick_finder = Signal()
     capture_area = Signal()
     toggle_click_through = Signal()
     failed = Signal(str)
@@ -130,6 +133,7 @@ class GlobalHotkeys(QObject):
             self._listener = keyboard.GlobalHotKeys(
                 {
                     hooks["toggle_panel"]: self.toggle_panel.emit,
+                    hooks["quick_finder"]: self.quick_finder.emit,
                     hooks["capture_area"]: self.capture_area.emit,
                     hooks["toggle_click_through"]: self.toggle_click_through.emit,
                 }

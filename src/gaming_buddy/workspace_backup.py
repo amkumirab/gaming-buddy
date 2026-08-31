@@ -29,6 +29,7 @@ PORTABLE_SETTING_KEYS = {
     "profiles/auto_switch",
     "profiles/executable_map",
     "shortcuts/toggle_panel",
+    "shortcuts/quick_finder",
     "shortcuts/capture_area",
     "shortcuts/toggle_click_through",
 }

@@ -68,6 +68,7 @@ from gaming_buddy.profiles import (
     GameProfileStore,
     belongs_to_profile,
 )
+from gaming_buddy.quick_finder import QuickFinderDialog, updated_search_history
 from gaming_buddy.shortcut_dialog import ShortcutDialog
 from gaming_buddy.startup import StartupError, StartupManager
 from gaming_buddy.storage import CardStore
@@ -100,6 +101,7 @@ class Dashboard(QMainWindow):
         self.game_detector.active_changed.connect(self._on_active_application)
         self.game_detector.foreground_changed.connect(self._on_foreground_application)
         self.pins: dict[int, PinWidget] = {}
+        self._quick_finder: QuickFinderDialog | None = None
         self._auto_hidden_pin_ids: set[int] = set()
         self.pin_visibility = PinVisibilityController(self)
         self.pin_visibility.auto_hide_requested.connect(self._hide_pins_automatically)
@@ -325,6 +327,8 @@ class Dashboard(QMainWindow):
         menu = QMenu()
         show_action = QAction("Show Gaming Buddy", menu)
         show_action.triggered.connect(self.show_panel)
+        quick_finder_action = QAction("Quick card finder…", menu)
+        quick_finder_action.triggered.connect(self.show_quick_finder)
         capture_action = QAction("Capture area", menu)
         capture_action.triggered.connect(self.start_capture)
         paste_image_action = QAction("Paste image", menu)
@@ -363,6 +367,7 @@ class Dashboard(QMainWindow):
         quit_action = QAction("Quit", menu)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
+        menu.addAction(quick_finder_action)
         menu.addAction(capture_action)
         menu.addAction(paste_image_action)
         menu.addAction(import_image_action)
@@ -568,13 +573,14 @@ class Dashboard(QMainWindow):
 
     def _update_shortcut_labels(self) -> None:
         panel = self.shortcuts["toggle_panel"]
+        finder = self.shortcuts["quick_finder"]
         capture = self.shortcuts["capture_area"]
         click_through = self.shortcuts["toggle_click_through"]
         if hasattr(self, "click_through"):
             self.click_through.setText(f"Click-through pins  ({click_through})")
         if hasattr(self, "shortcut_footer"):
             self.shortcut_footer.setText(
-                f"{panel} panel  •  {capture} capture  •  Double-click to pin"
+                f"{panel} panel  •  {finder} find  •  {capture} capture"
             )
 
     def backup_workspace(self) -> None:
@@ -1348,6 +1354,63 @@ class Dashboard(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def show_quick_finder(self) -> None:
+        existing = self._quick_finder
+        if existing is not None and existing.isVisible():
+            existing.show()
+            existing.raise_()
+            existing.activateWindow()
+            existing.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            existing.search.selectAll()
+            return
+        active_game = self._focused_game or self.game_input.text().strip()
+        dialog = QuickFinderDialog(
+            self.store.list(),
+            active_game,
+            self._quick_search_history(),
+        )
+        dialog.card_activated.connect(self._show_card_from_finder)
+        dialog.finished.connect(self._quick_finder_finished)
+        self._quick_finder = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _show_card_from_finder(self, card: Card, query: str) -> None:
+        if card.id is None:
+            return
+        stored = self.store.get(card.id)
+        if stored is None:
+            self.statusBar().showMessage("The selected card is no longer available", 2500)
+            return
+        self._remember_quick_search(query)
+        self.show_pin(stored)
+        pin = self.pins.get(stored.id)
+        if pin is not None:
+            if pin.card.collapsed:
+                pin.set_collapsed(False)
+            pin.show()
+            pin.raise_()
+
+    def _quick_search_history(self) -> list[str]:
+        value = self.settings.value("finder/recent_searches", [])
+        if isinstance(value, str):
+            return [value] if value.strip() else []
+        if isinstance(value, list):
+            return [str(item) for item in value if str(item).strip()]
+        return []
+
+    def _remember_quick_search(self, query: str) -> None:
+        history = updated_search_history(self._quick_search_history(), query)
+        self.settings.setValue("finder/recent_searches", history)
+        self.settings.sync()
+
+    def _quick_finder_finished(self, _result: int) -> None:
+        dialog = self._quick_finder
+        self._quick_finder = None
+        if dialog is not None:
+            dialog.deleteLater()
 
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
