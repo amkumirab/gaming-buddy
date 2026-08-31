@@ -29,6 +29,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Create, save, and pin quick text notes
 - Move and resize every pinned card
 - Snap pins to nearby screen edges and lock their position and size
+- Collapse pins into compact title bars and expand them when needed
 - Open screenshots at full resolution with Fit, 100%, and zoom controls
 - Adjust overlay opacity
 - Switch pins into click-through mode
@@ -44,7 +45,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Optionally hide pins outside linked games and restore them when gameplay resumes
 - Back up cards, screenshots, profiles, and portable settings to a verified ZIP archive
 - Restore backups by safely merging cards and skipping exact duplicates
-- Restore pinned cards, positions, sizes, and opacity after restarting
+- Restore pinned cards, positions, sizes, opacity, and collapsed state after restarting
 - Temporarily show or hide all saved pins without deleting them
 - Keep restored pins visible when monitors or resolutions change
 - Persist everything locally in SQLite
@@ -111,21 +112,23 @@ a `.sha256` file so the installer can be checked before it is run.
    arrow, rectangle, text, or eraser, then choose **Save copy** or **Save and pin**.
 6. Drag pins by their header and resize them from the bottom-right corner. Move a pin near
    a screen edge to snap it into place, then right-click it and choose **Lock pin position**.
-7. Double-click a pinned image to inspect the lossless original at full resolution.
-8. Use **Hide all pins** to clear the screen without losing the saved workspace.
-9. Enable **Click-through pins** so mouse input goes to the game.
-10. Open **Keyboard shortcuts…** to personalize controls without restarting.
-11. Right-click a saved card or pin to lock, edit, copy, or locate its original file. Use
+7. Double-click a pin header or use its **−** button to collapse it into a compact title bar.
+   Use **Collapse all** and **Expand all** to manage the whole workspace at once.
+8. Double-click a pinned image to inspect the lossless original at full resolution.
+9. Use **Hide all pins** to clear the screen without losing the saved workspace.
+10. Enable **Click-through pins** so mouse input goes to the game.
+11. Open **Keyboard shortcuts…** to personalize controls without restarting.
+12. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
     **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
-12. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
-13. Open a game, return with the panel shortcut, enter its name, and choose
+13. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
+14. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-14. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
+15. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
     Manual **Hide all pins** remains in effect when you return to the game.
-15. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+16. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
-16. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-17. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+17. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+18. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -180,6 +183,7 @@ gaming-buddy/
 - Backups are written only to the location selected by the user and are never uploaded.
 - Backup ZIP files are not encrypted, so they should be stored in a trusted location.
 - Pin lock state is stored locally with the rest of each card's workspace layout.
+- Pin collapsed state and expanded size are stored locally and included in workspace backups.
 - Saved cards and captured images can be removed by deleting `%LOCALAPPDATA%\GamingBuddy`.
 
 ## Compatibility and fair-play note

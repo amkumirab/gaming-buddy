@@ -171,6 +171,7 @@ def test_pinned_workspace_survives_database_reopen(tmp_path):
         )
         assert store.update_pinned(card.id, True)
         assert store.update_locked(card.id, True)
+        assert store.update_collapsed(card.id, True)
 
     with CardStore(database) as reopened:
         pinned = reopened.list(pinned_only=True)
@@ -178,6 +179,7 @@ def test_pinned_workspace_survives_database_reopen(tmp_path):
         assert pinned[0].title == "Persistent clue"
         assert pinned[0].pinned is True
         assert pinned[0].locked is True
+        assert pinned[0].collapsed is True
         assert (pinned[0].x, pinned[0].y, pinned[0].width, pinned[0].height) == (
             420,
             180,
@@ -186,6 +188,8 @@ def test_pinned_workspace_survives_database_reopen(tmp_path):
         )
         assert reopened.unlock_all_pins() == 1
         assert reopened.get(pinned[0].id).locked is False
+        assert reopened.set_all_pins_collapsed(False) == 1
+        assert reopened.get(pinned[0].id).collapsed is False
         assert reopened.update_pinned(pinned[0].id, False)
         assert reopened.list(pinned_only=True) == []
         assert len(reopened.list()) == 1
@@ -229,10 +233,28 @@ def test_existing_database_gets_workspace_columns(tmp_path):
         assert cards[0].favorite is False
         assert cards[0].pinned is False
         assert cards[0].locked is False
+        assert cards[0].collapsed is False
         assert cards[0].deleted_at == ""
         assert store.update_favorite(cards[0].id, True)
         assert store.update_pinned(cards[0].id, True)
         assert store.update_locked(cards[0].id, True)
+        assert store.update_collapsed(cards[0].id, True)
+
+
+def test_bulk_collapse_only_changes_pinned_cards(tmp_path):
+    with CardStore(tmp_path / "cards.sqlite3") as store:
+        pinned = store.add(Card(None, CardKind.NOTE, "Game", "Pinned"))
+        library_card = store.add(Card(None, CardKind.NOTE, "Game", "Library"))
+        assert store.update_pinned(pinned.id, True)
+        assert store.update_collapsed(library_card.id, True)
+
+        assert store.set_all_pins_collapsed(True) == 1
+        assert store.get(pinned.id).collapsed is True
+        assert store.get(library_card.id).collapsed is True
+
+        assert store.set_all_pins_collapsed(False) == 1
+        assert store.get(pinned.id).collapsed is False
+        assert store.get(library_card.id).collapsed is True
 
 
 def test_deleted_cards_can_be_searched_and_purged_by_age(tmp_path):

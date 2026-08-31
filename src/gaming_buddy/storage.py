@@ -33,6 +33,7 @@ class CardStore:
                 favorite INTEGER NOT NULL DEFAULT 0,
                 pinned INTEGER NOT NULL DEFAULT 0,
                 locked INTEGER NOT NULL DEFAULT 0,
+                collapsed INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 deleted_at TEXT NOT NULL DEFAULT ''
@@ -54,6 +55,10 @@ class CardStore:
         if "locked" not in columns:
             self._connection.execute(
                 "ALTER TABLE cards ADD COLUMN locked INTEGER NOT NULL DEFAULT 0"
+            )
+        if "collapsed" not in columns:
+            self._connection.execute(
+                "ALTER TABLE cards ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0"
             )
         if "deleted_at" not in columns:
             self._connection.execute(
@@ -88,8 +93,9 @@ class CardStore:
             """
             INSERT INTO cards (
                 kind, game, title, content, image_path, opacity,
-                x, y, width, height, favorite, pinned, locked, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                x, y, width, height, favorite, pinned, locked, collapsed,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 card.kind.value,
@@ -105,6 +111,7 @@ class CardStore:
                 int(card.favorite),
                 int(card.pinned),
                 int(card.locked),
+                int(card.collapsed),
                 card.created_at,
                 card.updated_at,
             ),
@@ -253,6 +260,27 @@ class CardStore:
         self._connection.commit()
         return cursor.rowcount
 
+    def update_collapsed(self, card_id: int, collapsed: bool) -> bool:
+        cursor = self._connection.execute(
+            "UPDATE cards SET collapsed = ?, updated_at = ? "
+            "WHERE id = ? AND deleted_at = ''",
+            (int(collapsed), utc_now(), card_id),
+        )
+        self._connection.commit()
+        return cursor.rowcount > 0
+
+    def set_all_pins_collapsed(self, collapsed: bool) -> int:
+        cursor = self._connection.execute(
+            """
+            UPDATE cards
+            SET collapsed = ?, updated_at = ?
+            WHERE pinned = 1 AND collapsed != ? AND deleted_at = ''
+            """,
+            (int(collapsed), utc_now(), int(collapsed)),
+        )
+        self._connection.commit()
+        return cursor.rowcount
+
     def update_details(self, card_id: int, *, title: str, game: str, content: str) -> bool:
         cursor = self._connection.execute(
             """
@@ -350,6 +378,7 @@ class CardStore:
             favorite=bool(row["favorite"]),
             pinned=bool(row["pinned"]),
             locked=bool(row["locked"]),
+            collapsed=bool(row["collapsed"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
             deleted_at=str(row["deleted_at"]),

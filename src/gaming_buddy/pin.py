@@ -221,7 +221,20 @@ class ScaledImage(QLabel):
             super().mouseDoubleClickEvent(event)
 
 
+class _PinHeader(QWidget):
+    double_clicked = Signal()
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.double_clicked.emit()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+
 class PinWidget(QWidget):
+    COLLAPSED_HEIGHT = 48
+
     def __init__(
         self,
         card: Card,
@@ -230,6 +243,7 @@ class PinWidget(QWidget):
         on_delete: Callable[[Card], None],
         on_edit: Callable[[Card], None],
         on_lock_changed: Callable[[Card], None],
+        on_collapsed_changed: Callable[[Card], None],
         on_annotate: Callable[[Card], None],
         on_copy: Callable[[Card], None],
         on_open_location: Callable[[Card], None],
@@ -241,6 +255,7 @@ class PinWidget(QWidget):
         self._on_delete = on_delete
         self._on_edit = on_edit
         self._on_lock_changed = on_lock_changed
+        self._on_collapsed_changed = on_collapsed_changed
         self._on_annotate = on_annotate
         self._on_copy = on_copy
         self._on_open_location = on_open_location
@@ -273,6 +288,7 @@ class PinWidget(QWidget):
         self.setWindowOpacity(card.opacity)
         self._build_ui()
         self.set_locked(card.locked, notify=False)
+        self.set_collapsed(card.collapsed, notify=False)
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
@@ -292,6 +308,11 @@ class PinWidget(QWidget):
                 color: #ffd76d; background: #352c1c; border: 1px solid #725d2e;
                 border-radius: 5px; padding: 2px 5px; font-size: 9px; font-weight: 700;
             }
+            QPushButton#pinCollapse {
+                color: #d5caff; background: #211b31; border: 1px solid #4b3d70;
+                border-radius: 5px; font-size: 14px; font-weight: 700;
+            }
+            QPushButton#pinCollapse:hover { background: #302546; }
             QTextBrowser {
                 background: transparent; border: none; color: #ffffff;
                 padding: 5px; font-size: 14px;
@@ -303,7 +324,10 @@ class PinWidget(QWidget):
         layout.setContentsMargins(10, 8, 6, 6)
         layout.setSpacing(4)
 
-        header = QHBoxLayout()
+        self._header = _PinHeader()
+        self._header.double_clicked.connect(self.toggle_collapsed)
+        header = QHBoxLayout(self._header)
+        header.setContentsMargins(0, 0, 0, 0)
         title = QLabel(self.card.title or "Untitled")
         title.setObjectName("pinTitle")
         game = QLabel(self.card.game or "General")
@@ -312,27 +336,38 @@ class PinWidget(QWidget):
         self._lock_indicator = QLabel("LOCKED")
         self._lock_indicator.setObjectName("pinLock")
         self._lock_indicator.setToolTip("Position and size are locked")
+        self._collapse_button = QPushButton()
+        self._collapse_button.setObjectName("pinCollapse")
+        self._collapse_button.setFixedSize(24, 24)
+        self._collapse_button.clicked.connect(self.toggle_collapsed)
         header.addWidget(title, 1)
         header.addWidget(self._lock_indicator)
         header.addWidget(game)
-        layout.addLayout(header)
+        header.addWidget(self._collapse_button)
+        layout.addWidget(self._header)
+
+        self._body = QWidget()
+        body_layout = QVBoxLayout(self._body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(4)
 
         if self.card.kind is CardKind.IMAGE and Path(self.card.image_path).is_file():
             image = ScaledImage(self.card.image_path)
             image.open_requested.connect(self._open_original)
-            layout.addWidget(image, 1)
+            body_layout.addWidget(image, 1)
         else:
             content = QTextBrowser()
             content.setPlainText(self.card.content)
             content.setOpenExternalLinks(True)
-            layout.addWidget(content, 1)
+            body_layout.addWidget(content, 1)
 
         grip_row = QHBoxLayout()
         grip_row.addStretch(1)
         self._grip = QSizeGrip(self)
         self._grip.setFixedSize(16, 16)
         grip_row.addWidget(self._grip)
-        layout.addLayout(grip_row)
+        body_layout.addLayout(grip_row)
+        layout.addWidget(self._body, 1)
 
     def set_click_through(self, enabled: bool) -> None:
         was_visible = self.isVisible()
@@ -342,6 +377,9 @@ class PinWidget(QWidget):
 
     def contextMenuEvent(self, event: object) -> None:
         menu = QMenu(self)
+        collapse = QAction("Expand pin" if self.card.collapsed else "Collapse pin", menu)
+        collapse.triggered.connect(self.toggle_collapsed)
+        menu.addAction(collapse)
         lock = QAction("Unlock pin" if self.card.locked else "Lock pin position", menu)
         lock.triggered.connect(lambda: self.set_locked(not self.card.locked))
         menu.addAction(lock)
@@ -400,11 +438,50 @@ class PinWidget(QWidget):
         self.card.locked = locked
         self._drag_origin = None
         self._drag_moved = False
-        self._grip.setEnabled(not locked)
-        self._grip.setVisible(not locked)
         self._lock_indicator.setVisible(locked)
+        self._sync_resize_grip()
         if notify:
             self._on_lock_changed(self.card)
+
+    def toggle_collapsed(self) -> None:
+        self.set_collapsed(not self.card.collapsed)
+
+    def set_collapsed(self, collapsed: bool, *, notify: bool = True) -> None:
+        if collapsed and not self.card.collapsed:
+            self.save_now()
+        self.card.collapsed = collapsed
+        self._drag_origin = None
+        self._drag_moved = False
+        self._body.setVisible(not collapsed)
+        if collapsed:
+            self.setMinimumHeight(self.COLLAPSED_HEIGHT)
+            self.setMaximumHeight(self.COLLAPSED_HEIGHT)
+            self.resize(self.width(), self.COLLAPSED_HEIGHT)
+            self._collapse_button.setText("+")
+            self._collapse_button.setToolTip("Expand pin")
+        else:
+            self.setMaximumHeight(16_777_215)
+            self.setMinimumHeight(110)
+            screens = [screen.availableGeometry() for screen in QGuiApplication.screens()]
+            primary_screen = QGuiApplication.primaryScreen()
+            primary_geometry = primary_screen.availableGeometry() if primary_screen else None
+            expanded = fit_geometry_to_screens(
+                QRect(self.x(), self.y(), self.width(), max(110, self.card.height)),
+                screens,
+                primary_geometry,
+            )
+            self.setGeometry(expanded)
+            self._collapse_button.setText("−")
+            self._collapse_button.setToolTip("Collapse pin")
+        self._sync_resize_grip()
+        self._queue_save()
+        if notify:
+            self._on_collapsed_changed(self.card)
+
+    def _sync_resize_grip(self) -> None:
+        enabled = not self.card.locked and not self.card.collapsed
+        self._grip.setEnabled(enabled)
+        self._grip.setVisible(enabled)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if (
@@ -462,6 +539,7 @@ class PinWidget(QWidget):
         self.card.x = geometry.x()
         self.card.y = geometry.y()
         self.card.width = geometry.width()
-        self.card.height = geometry.height()
+        if not self.card.collapsed:
+            self.card.height = geometry.height()
         self.card.opacity = self.windowOpacity()
         self._on_layout_changed(self.card)

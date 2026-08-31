@@ -228,12 +228,21 @@ class Dashboard(QMainWindow):
         show_pins.clicked.connect(self.show_all_pins)
         hide_pins = QPushButton("Hide all pins")
         hide_pins.clicked.connect(self.hide_all_pins)
-        unlock_pins = QPushButton("Unlock all")
-        unlock_pins.clicked.connect(self.unlock_all_pins)
         workspace_controls.addWidget(show_pins)
         workspace_controls.addWidget(hide_pins)
-        workspace_controls.addWidget(unlock_pins)
         layout.addLayout(workspace_controls)
+
+        layout_controls = QHBoxLayout()
+        collapse_pins = QPushButton("Collapse all")
+        collapse_pins.clicked.connect(self.collapse_all_pins)
+        expand_pins = QPushButton("Expand all")
+        expand_pins.clicked.connect(self.expand_all_pins)
+        unlock_pins = QPushButton("Unlock all")
+        unlock_pins.clicked.connect(self.unlock_all_pins)
+        layout_controls.addWidget(collapse_pins)
+        layout_controls.addWidget(expand_pins)
+        layout_controls.addWidget(unlock_pins)
+        layout.addLayout(layout_controls)
 
         tools = QHBoxLayout()
         shortcuts_button = QPushButton("Shortcuts…")
@@ -326,6 +335,10 @@ class Dashboard(QMainWindow):
         show_pins_action.triggered.connect(self.show_all_pins)
         hide_pins_action = QAction("Hide all pins", menu)
         hide_pins_action.triggered.connect(self.hide_all_pins)
+        collapse_pins_action = QAction("Collapse all pins", menu)
+        collapse_pins_action.triggered.connect(self.collapse_all_pins)
+        expand_pins_action = QAction("Expand all pins", menu)
+        expand_pins_action.triggered.connect(self.expand_all_pins)
         unlock_pins_action = QAction("Unlock all pins", menu)
         unlock_pins_action.triggered.connect(self.unlock_all_pins)
         self.auto_hide_pins_action = QAction("Hide pins outside linked games", menu)
@@ -356,6 +369,8 @@ class Dashboard(QMainWindow):
         menu.addSeparator()
         menu.addAction(show_pins_action)
         menu.addAction(hide_pins_action)
+        menu.addAction(collapse_pins_action)
+        menu.addAction(expand_pins_action)
         menu.addAction(unlock_pins_action)
         menu.addAction(self.auto_hide_pins_action)
         menu.addSeparator()
@@ -909,6 +924,7 @@ class Dashboard(QMainWindow):
             self._delete_card,
             self._edit_card,
             self._save_pin_lock,
+            self._save_pin_collapsed,
             self._annotate_card,
             self._copy_card,
             self._open_card_location,
@@ -950,6 +966,23 @@ class Dashboard(QMainWindow):
                 pin.set_locked(False, notify=False)
         self.refresh_cards()
         message = f"Unlocked {unlocked} pin(s)" if unlocked else "No locked pins"
+        self.statusBar().showMessage(message, 2500)
+
+    def collapse_all_pins(self) -> None:
+        self._set_all_pins_collapsed(True)
+
+    def expand_all_pins(self) -> None:
+        self._set_all_pins_collapsed(False)
+
+    def _set_all_pins_collapsed(self, collapsed: bool) -> None:
+        changed = self.store.set_all_pins_collapsed(collapsed)
+        for pin in self.pins.values():
+            if pin.card.collapsed != collapsed:
+                pin.set_collapsed(collapsed, notify=False)
+        self.refresh_cards()
+        verb = "Collapsed" if collapsed else "Expanded"
+        fallback = "All pins are already collapsed" if collapsed else "All pins are already expanded"
+        message = f"{verb} {changed} pin(s)" if changed else fallback
         self.statusBar().showMessage(message, 2500)
 
     def _hide_pins_automatically(self) -> None:
@@ -1016,6 +1049,14 @@ class Dashboard(QMainWindow):
         message = "Pin locked" if card.locked else "Pin unlocked"
         self.statusBar().showMessage(message, 2000)
 
+    def _save_pin_collapsed(self, card: Card) -> None:
+        if card.id is None:
+            return
+        self.store.update_collapsed(card.id, card.collapsed)
+        self.refresh_cards()
+        message = "Pin collapsed" if card.collapsed else "Pin expanded"
+        self.statusBar().showMessage(message, 2000)
+
     def refresh_cards(self) -> None:
         if not hasattr(self, "card_list"):
             return
@@ -1030,8 +1071,10 @@ class Dashboard(QMainWindow):
             game_label = card.game or "General"
             workspace_label = " · Pinned" if card.pinned else ""
             lock_label = " · Locked" if card.pinned and card.locked else ""
+            collapsed_label = " · Collapsed" if card.pinned and card.collapsed else ""
             item = QListWidgetItem(
-                f"{icon}  {card.title}\n     {game_label}{workspace_label}{lock_label}"
+                f"{icon}  {card.title}\n     "
+                f"{game_label}{workspace_label}{lock_label}{collapsed_label}"
             )
             item.setData(Qt.ItemDataRole.UserRole, card.id)
             item.setToolTip(
@@ -1067,10 +1110,14 @@ class Dashboard(QMainWindow):
         annotate_action = None
         open_location_action = None
         lock_action = None
+        collapse_action = None
         if card.kind is CardKind.IMAGE:
             annotate_action = menu.addAction("Annotate image…")
             open_location_action = menu.addAction("Open file location")
         if card.pinned:
+            collapse_action = menu.addAction(
+                "Expand pin" if card.collapsed else "Collapse pin"
+            )
             lock_action = menu.addAction("Unlock pin" if card.locked else "Lock pin position")
         menu.addSeparator()
         favorite_action = menu.addAction(
@@ -1088,6 +1135,12 @@ class Dashboard(QMainWindow):
             self._annotate_card(card)
         elif open_location_action is not None and action is open_location_action:
             self._open_card_location(card)
+        elif collapse_action is not None and action is collapse_action:
+            card.collapsed = not card.collapsed
+            pin = self.pins.get(card.id) if card.id is not None else None
+            if pin is not None:
+                pin.set_collapsed(card.collapsed, notify=False)
+            self._save_pin_collapsed(card)
         elif lock_action is not None and action is lock_action:
             card.locked = not card.locked
             pin = self.pins.get(card.id) if card.id is not None else None

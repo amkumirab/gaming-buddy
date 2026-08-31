@@ -40,6 +40,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
                 favorite=True,
                 pinned=True,
                 locked=True,
+                collapsed=True,
             )
         )
         source_store.add(
@@ -83,6 +84,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
         restored_image = next(card for card in cards if card.kind is CardKind.IMAGE)
         restored_note = next(card for card in cards if card.kind is CardKind.NOTE)
         assert restored_note.locked is True
+        assert restored_note.collapsed is True
         assert restored_image.image_path.startswith(str(restored_captures))
         assert restored_image.image_path != str(image_path)
         assert Path(restored_image.image_path).read_bytes() == b"lossless-image-content"

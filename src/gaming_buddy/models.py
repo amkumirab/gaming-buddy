@@ -30,6 +30,7 @@ class Card:
     favorite: bool = False
     pinned: bool = False
     locked: bool = False
+    collapsed: bool = False
     created_at: str = ""
     updated_at: str = ""
     deleted_at: str = ""
