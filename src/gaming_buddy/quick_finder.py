@@ -218,7 +218,12 @@ class QuickFinderDialog(QDialog):
             details = " · ".join((card.game or "General", *card_statuses(card)))
             item = QListWidgetItem(f"{favorite}{kind}  {card.title}\n     {details}")
             item.setData(Qt.ItemDataRole.UserRole, card.id)
-            tooltip = card.content if card.kind is CardKind.NOTE else card.image_path
+            if card.kind is CardKind.NOTE:
+                tooltip = card.content
+            elif card.content.strip():
+                tooltip = f"{card.content}\n\nFile: {card.image_path}"
+            else:
+                tooltip = card.image_path
             item.setToolTip(tooltip[:400])
             self.results.addItem(item)
         if matches:

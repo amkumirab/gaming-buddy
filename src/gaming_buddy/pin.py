@@ -246,6 +246,8 @@ class PinWidget(QWidget):
         on_collapsed_changed: Callable[[Card], None],
         on_annotate: Callable[[Card], None],
         on_copy: Callable[[Card], None],
+        on_extract_text: Callable[[Card], None],
+        on_copy_text: Callable[[Card], None],
         on_open_location: Callable[[Card], None],
     ) -> None:
         super().__init__()
@@ -258,6 +260,8 @@ class PinWidget(QWidget):
         self._on_collapsed_changed = on_collapsed_changed
         self._on_annotate = on_annotate
         self._on_copy = on_copy
+        self._on_extract_text = on_extract_text
+        self._on_copy_text = on_copy_text
         self._on_open_location = on_open_location
         self._drag_origin: QPoint | None = None
         self._drag_moved = False
@@ -394,6 +398,13 @@ class PinWidget(QWidget):
         copy.triggered.connect(lambda: self._on_copy(self.card))
         menu.addAction(copy)
         if self.card.kind is CardKind.IMAGE:
+            extract_text = QAction("Extract text…", menu)
+            extract_text.triggered.connect(lambda: self._on_extract_text(self.card))
+            menu.addAction(extract_text)
+            if self.card.content.strip():
+                copy_text = QAction("Copy extracted text", menu)
+                copy_text.triggered.connect(lambda: self._on_copy_text(self.card))
+                menu.addAction(copy_text)
             annotate = QAction("Annotate image…", menu)
             annotate.triggered.connect(lambda: self._on_annotate(self.card))
             menu.addAction(annotate)

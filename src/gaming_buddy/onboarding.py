@@ -68,10 +68,10 @@ class OnboardingDialog(QDialog):
         layout.addWidget(
             self._step(
                 "2",
-                "Mark it up and keep it on screen",
-                "Right-click an image to add arrows, text, or highlights. Then move and "
-                "resize its pin, snap it to a screen edge, and lock the layout. Collapse pins "
-                "into compact title bars or enable click-through when you need a clear view.",
+                "Read, mark up, and pin it",
+                "Right-click an image to extract searchable text or add arrows, text, and "
+                "highlights. Then move and resize its pin, snap it to a screen edge, and lock "
+                "the layout. Collapse pins or enable click-through when you need a clear view.",
             )
         )
         layout.addWidget(

@@ -34,6 +34,8 @@ def _pin(
         lambda _card: None,
         lambda _card: None,
         lambda _card: None,
+        lambda _card: None,
+        lambda _card: None,
     )
 
 

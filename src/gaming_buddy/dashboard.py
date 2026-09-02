@@ -72,6 +72,12 @@ from gaming_buddy.quick_finder import QuickFinderDialog, updated_search_history
 from gaming_buddy.shortcut_dialog import ShortcutDialog
 from gaming_buddy.startup import StartupError, StartupManager
 from gaming_buddy.storage import CardStore
+from gaming_buddy.text_recognition import (
+    RecognitionLanguage,
+    TextRecognitionError,
+    available_languages,
+)
+from gaming_buddy.text_recognition_dialog import TextRecognitionDialog
 from gaming_buddy.trash_dialog import TrashDialog, remove_card_image_if_unused
 from gaming_buddy.workspace_backup import (
     BackupError,
@@ -102,6 +108,8 @@ class Dashboard(QMainWindow):
         self.game_detector.foreground_changed.connect(self._on_foreground_application)
         self.pins: dict[int, PinWidget] = {}
         self._quick_finder: QuickFinderDialog | None = None
+        self._recognition_languages: list[RecognitionLanguage] | None = None
+        self._text_recognition_dialog: TextRecognitionDialog | None = None
         self._auto_hidden_pin_ids: set[int] = set()
         self.pin_visibility = PinVisibilityController(self)
         self.pin_visibility.auto_hide_requested.connect(self._hide_pins_automatically)
@@ -933,6 +941,8 @@ class Dashboard(QMainWindow):
             self._save_pin_collapsed,
             self._annotate_card,
             self._copy_card,
+            self._extract_image_text,
+            self._copy_extracted_text,
             self._open_card_location,
         )
         pin.set_click_through(self.click_through.isChecked())
@@ -1078,14 +1088,16 @@ class Dashboard(QMainWindow):
             workspace_label = " · Pinned" if card.pinned else ""
             lock_label = " · Locked" if card.pinned and card.locked else ""
             collapsed_label = " · Collapsed" if card.pinned and card.collapsed else ""
+            text_label = " · Text indexed" if card.kind is CardKind.IMAGE and card.content else ""
             item = QListWidgetItem(
                 f"{icon}  {card.title}\n     "
-                f"{game_label}{workspace_label}{lock_label}{collapsed_label}"
+                f"{game_label}{workspace_label}{lock_label}{collapsed_label}{text_label}"
             )
             item.setData(Qt.ItemDataRole.UserRole, card.id)
-            item.setToolTip(
-                "Saved in the restored workspace" if card.pinned else "Double-click to pin"
-            )
+            tooltip = "Saved in the restored workspace" if card.pinned else "Double-click to pin"
+            if card.kind is CardKind.IMAGE and card.content.strip():
+                tooltip = f"{tooltip}\n\nExtracted text:\n{card.content[:400]}"
+            item.setToolTip(tooltip)
             self.card_list.addItem(item)
         self._update_trash_button()
 
@@ -1114,10 +1126,15 @@ class Dashboard(QMainWindow):
             "Copy image" if card.kind is CardKind.IMAGE else "Copy note text"
         )
         annotate_action = None
+        extract_text_action = None
+        copy_text_action = None
         open_location_action = None
         lock_action = None
         collapse_action = None
         if card.kind is CardKind.IMAGE:
+            extract_text_action = menu.addAction("Extract text…")
+            if card.content.strip():
+                copy_text_action = menu.addAction("Copy extracted text")
             annotate_action = menu.addAction("Annotate image…")
             open_location_action = menu.addAction("Open file location")
         if card.pinned:
@@ -1137,6 +1154,10 @@ class Dashboard(QMainWindow):
             self._edit_card(card)
         elif action is copy_action:
             self._copy_card(card)
+        elif extract_text_action is not None and action is extract_text_action:
+            self._extract_image_text(card)
+        elif copy_text_action is not None and action is copy_text_action:
+            self._copy_extracted_text(card)
         elif annotate_action is not None and action is annotate_action:
             self._annotate_card(card)
         elif open_location_action is not None and action is open_location_action:
@@ -1212,6 +1233,89 @@ class Dashboard(QMainWindow):
         clipboard.setImage(image)
         self.statusBar().showMessage("Screenshot copied to clipboard", 2500)
 
+    def _copy_extracted_text(self, card: Card) -> None:
+        text = card.content.strip()
+        if not text:
+            self.statusBar().showMessage("This screenshot has no extracted text", 2500)
+            return
+        QApplication.clipboard().setText(text)
+        self.statusBar().showMessage("Extracted text copied to clipboard", 2500)
+
+    def _extract_image_text(self, card: Card) -> None:
+        if card.kind is not CardKind.IMAGE or not Path(card.image_path).is_file():
+            QMessageBox.warning(
+                self,
+                "Image unavailable",
+                "The screenshot file could not be found.",
+            )
+            return
+        existing = self._text_recognition_dialog
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+        if self._recognition_languages is None:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                self._recognition_languages = available_languages()
+            except TextRecognitionError as exc:
+                QMessageBox.warning(self, "Text recognition unavailable", str(exc))
+                return
+            finally:
+                QApplication.restoreOverrideCursor()
+        if not self._recognition_languages:
+            QMessageBox.warning(
+                self,
+                "Text recognition unavailable",
+                "Install a Windows language pack with text recognition support and try again.",
+            )
+            return
+
+        dialog = TextRecognitionDialog(
+            Path(card.image_path),
+            card.content,
+            self._recognition_languages,
+            str(self.settings.value("recognition/language", "")),
+            self,
+        )
+        dialog.accepted.connect(lambda: self._save_extracted_text(card, dialog))
+        dialog.finished.connect(self._text_recognition_finished)
+        self._text_recognition_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _save_extracted_text(self, card: Card, dialog: TextRecognitionDialog) -> None:
+        if card.id is None:
+            return
+        stored = self.store.get(card.id)
+        if stored is None:
+            self.statusBar().showMessage("The selected card is no longer available", 2500)
+            return
+        text = dialog.recognized_text
+        if not self.store.update_details(
+            stored.id,
+            title=stored.title,
+            game=stored.game,
+            content=text,
+        ):
+            QMessageBox.warning(self, "Save failed", "The extracted text could not be saved.")
+            return
+        pin = self.pins.get(stored.id)
+        if pin is not None:
+            pin.card.content = text
+        self.settings.setValue("recognition/language", dialog.selected_language)
+        self.settings.sync()
+        self.refresh_cards()
+        message = "Screenshot text saved and searchable" if text else "Screenshot text cleared"
+        self.statusBar().showMessage(message, 3000)
+
+    def _text_recognition_finished(self, _result: int) -> None:
+        dialog = self._text_recognition_dialog
+        self._text_recognition_dialog = None
+        if dialog is not None:
+            dialog.deleteLater()
+
     def _annotate_card(self, card: Card) -> None:
         source_path = Path(card.image_path)
         if card.kind is not CardKind.IMAGE or not source_path.is_file():
@@ -1241,6 +1345,7 @@ class Dashboard(QMainWindow):
             kind=CardKind.IMAGE,
             game=card.game or "General",
             title=f"{card.title} · Annotated"[:120],
+            content=card.content,
             image_path=str(destination),
             opacity=card.opacity,
             width=max(240, min(520, image.width())),

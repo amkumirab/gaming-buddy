@@ -31,10 +31,11 @@ game window. The prototype is designed for quick interaction and stores its data
 - Snap pins to nearby screen edges and lock their position and size
 - Collapse pins into compact title bars and expand them when needed
 - Open screenshots at full resolution with Fit, 100%, and zoom controls
+- Extract text from screenshots locally, review it, and save it with the image card
 - Adjust overlay opacity
 - Switch pins into click-through mode
 - Organize cards by game name
-- Search saved cards by title, note text, or game
+- Search saved cards by title, note text, extracted screenshot text, or game
 - Find and show any saved card from a keyboard-first in-game search overlay
 - Mark important cards as favorites and filter the library
 - Edit saved card titles, game names, and note text without recreating them
@@ -116,22 +117,25 @@ a `.sha256` file so the installer can be checked before it is run.
    a screen edge to snap it into place, then right-click it and choose **Lock pin position**.
 7. Double-click a pin header or use its **−** button to collapse it into a compact title bar.
    Use **Collapse all** and **Expand all** to manage the whole workspace at once.
-8. Double-click a pinned image to inspect the lossless original at full resolution.
-9. Use **Hide all pins** to clear the screen without losing the saved workspace.
-10. Enable **Click-through pins** so mouse input goes to the game.
-11. Press `Ctrl+Shift+F`, type a clue or card name, and press Enter to show it immediately.
-12. Open **Keyboard shortcuts…** to personalize controls without restarting.
-13. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
+8. Right-click an image card or pin and choose **Extract text…**. Select an installed
+   language or use the automatic option, review the result, and save it with the card.
+9. Double-click a pinned image to inspect the lossless original at full resolution.
+10. Use **Hide all pins** to clear the screen without losing the saved workspace.
+11. Enable **Click-through pins** so mouse input goes to the game.
+12. Press `Ctrl+Shift+F`, type a clue, code, or card name, and press Enter to show it
+    immediately. Saved screenshot text is included in these results.
+13. Open **Keyboard shortcuts…** to personalize controls without restarting.
+14. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
     **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
-14. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
-15. Open a game, return with the panel shortcut, enter its name, and choose
+15. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
+16. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-16. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
+17. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
     Manual **Hide all pins** remains in effect when you return to the game.
-17. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+18. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
-18. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-19. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+19. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+20. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -153,6 +157,8 @@ gaming-buddy/
 │   ├── profiles.py     # Active-game detection and profile mappings
 │   ├── profile_dialog.py # Profile manager
 │   ├── quick_finder.py # Keyboard-first saved-card search overlay
+│   ├── text_recognition.py # Local Windows screenshot text recognition
+│   ├── text_recognition_dialog.py # Recognition review and language controls
 │   ├── hotkeys.py      # Global keyboard shortcuts
 │   ├── image_annotation.py # Non-destructive screenshot annotation tools
 │   ├── image_import.py # Lossless image import and duplicate checks
@@ -177,6 +183,8 @@ gaming-buddy/
   bin is emptied earlier.
 - Interface preferences, shortcut mappings, and profiles use the current Windows account.
 - Recent quick-finder searches stay in the current Windows account settings.
+- Screenshot text recognition runs locally through installed Windows language packs; images
+  are not uploaded for recognition.
 - The prototype does not require an account or cloud connection.
 - Captures are created only after the user activates the capture shortcut.
 - Imported images are copied into the local capture library only after confirmation.
@@ -201,8 +209,8 @@ desktop overlays. Always follow the rules of the game you are playing.
 ## Current scope and roadmap
 
 This release intentionally focuses on the core overlay and notebook experience. Planned
-improvements include text recognition, spoiler-safe layered hints, optional web lookup,
-and better multi-monitor support.
+improvements include spoiler-safe layered hints, optional web lookup, and better
+multi-monitor support.
 
 ## Development
 

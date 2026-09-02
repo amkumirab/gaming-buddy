@@ -117,3 +117,21 @@ def test_recent_search_selection_populates_query(application: QApplication) -> N
 
     assert dialog.search.text() == "boss route"
     dialog.close()
+
+
+def test_image_result_tooltip_includes_extracted_text(application: QApplication) -> None:
+    card = Card(
+        7,
+        CardKind.IMAGE,
+        "Resident Evil 2",
+        "West office safe",
+        content="Left 9, right 15, left 7",
+        image_path="safe.png",
+    )
+    dialog = QuickFinderDialog([card])
+
+    tooltip = dialog.results.item(0).toolTip()
+
+    assert "right 15" in tooltip
+    assert "safe.png" in tooltip
+    dialog.close()

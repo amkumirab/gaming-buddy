@@ -27,6 +27,7 @@ def test_onboarding_shows_current_shortcuts_and_display_guidance(
     assert DEFAULT_SHORTCUTS["quick_finder"] in text
     assert "Borderless Windowed" in text
     assert "Ctrl+V" in text
+    assert "extract searchable text" in text
     assert dialog.launch_at_sign_in is False
 
     dialog.launch_checkbox.setChecked(True)

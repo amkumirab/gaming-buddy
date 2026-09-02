@@ -144,11 +144,22 @@ def test_search_and_favorite_filters(tmp_path):
                 content="Upgrade the greatsword.",
             )
         )
+        screenshot = store.add(
+            Card(
+                id=None,
+                kind=CardKind.IMAGE,
+                game="Resident Evil 2",
+                title="West office safe",
+                content="Left 9, right 15, left 7",
+                image_path=str(tmp_path / "safe.png"),
+            )
+        )
 
         assert store.update_favorite(build.id, True)
         assert store.get(build.id).favorite is True
         assert [card.id for card in store.list(query="ROULETTE")] == [puzzle.id]
         assert [card.id for card in store.list(query="elden")] == [build.id]
+        assert [card.id for card in store.list(query="right 15")] == [screenshot.id]
         assert [card.id for card in store.list(favorites_only=True)] == [build.id]
         assert store.list("Control", "strength") == []
 

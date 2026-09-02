@@ -44,6 +44,12 @@ class CardEditor(QDialog):
             file_label = QLabel(filename)
             file_label.setObjectName("muted")
             form.addRow("File", file_label)
+            self.content_input = QTextEdit(card.content)
+            self.content_input.setMinimumHeight(130)
+            self.content_input.setPlaceholderText(
+                "Extracted screenshot text can be reviewed and corrected here."
+            )
+            form.addRow("Image text", self.content_input)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(

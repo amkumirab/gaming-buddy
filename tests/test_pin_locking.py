@@ -28,6 +28,8 @@ def _pin(card: Card, lock_updates: list[bool]) -> PinWidget:
         lambda _card: None,
         lambda _card: None,
         lambda _card: None,
+        lambda _card: None,
+        lambda _card: None,
     )
 
 
