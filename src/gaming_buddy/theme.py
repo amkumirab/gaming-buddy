@@ -22,6 +22,21 @@ QFrame#undoBar {
     border: 1px solid #594886;
     border-radius: 10px;
 }
+QFrame#cardPreview {
+    background: #191624;
+    border: 1px solid #3d3257;
+    border-radius: 12px;
+}
+QDockWidget {
+    color: #cdbfff;
+    font-weight: 700;
+}
+QDockWidget::title {
+    background: #1b1729;
+    border-bottom: 1px solid #3d3257;
+    padding: 7px 9px;
+    text-align: left;
+}
 QLabel#brand {
     font-size: 22px;
     font-weight: 700;
@@ -36,6 +51,31 @@ QLabel#dialogTitle {
     color: #ffffff;
     font-size: 20px;
     font-weight: 700;
+}
+QLabel#previewTitle {
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 700;
+}
+QLabel#previewGame {
+    color: #d8ccff;
+    font-weight: 600;
+}
+QLabel#previewBadge {
+    background: #2b2340;
+    border: 1px solid #594886;
+    border-radius: 7px;
+    color: #cdbfff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 7px;
+}
+QLabel#previewImage {
+    background: #0a0810;
+    border: 1px solid #312941;
+    border-radius: 9px;
+    color: #817990;
+    padding: 4px;
 }
 QLabel#setupHeading {
     color: #ffffff;
@@ -73,6 +113,13 @@ QLineEdit, QTextEdit, QListWidget, QTableWidget, QComboBox {
 }
 QLineEdit:focus, QTextEdit:focus, QListWidget:focus, QTableWidget:focus, QComboBox:focus {
     border: 1px solid #8a6cff;
+}
+QTextBrowser#previewText {
+    background: #0d0b14;
+    border: 1px solid #312941;
+    border-radius: 8px;
+    color: #e6e0f2;
+    padding: 7px;
 }
 QPushButton {
     background: #29233a;

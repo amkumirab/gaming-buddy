@@ -28,6 +28,7 @@ PORTABLE_SETTING_KEYS = {
     "profiles/auto_hide_pins",
     "profiles/auto_switch",
     "profiles/executable_map",
+    "preview/visible",
     "recognition/language",
     "shortcuts/toggle_panel",
     "shortcuts/quick_finder",

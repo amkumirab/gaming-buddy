@@ -21,6 +21,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDockWidget,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -41,6 +42,7 @@ from PySide6.QtWidgets import (
 
 from gaming_buddy.capture import SelectionOverlay, begin_capture
 from gaming_buddy.card_editor import CardEditor
+from gaming_buddy.card_preview import CardPreviewPanel
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
 from gaming_buddy.image_annotation import (
     AnnotationDialog,
@@ -125,7 +127,7 @@ class Dashboard(QMainWindow):
 
         self.setWindowTitle("Gaming Buddy")
         self.setMinimumSize(430, 730)
-        self.resize(470, 900)
+        self.resize(830, 900)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setAcceptDrops(True)
         self._build_ui()
@@ -276,19 +278,29 @@ class Dashboard(QMainWindow):
         self.trash_button.setObjectName("compact")
         self.trash_button.setToolTip("Open recently deleted cards")
         self.trash_button.clicked.connect(self.open_trash)
+        self.preview_button = QPushButton("Preview")
+        self.preview_button.setObjectName("compact")
+        self.preview_button.setCheckable(True)
+        self.preview_button.setChecked(True)
+        self.preview_button.clicked.connect(self._set_preview_visible)
         self.filter_current = QCheckBox("Current game only")
         self.filter_current.toggled.connect(self.refresh_cards)
         self.filter_favorites = QCheckBox("Favorites")
         self.filter_favorites.toggled.connect(self.refresh_cards)
         library_header.addWidget(library_label)
         library_header.addWidget(self.trash_button)
+        library_header.addWidget(self.preview_button)
         library_header.addStretch(1)
-        library_header.addWidget(self.filter_favorites)
-        library_header.addWidget(self.filter_current)
         layout.addLayout(library_header)
 
+        library_filters = QHBoxLayout()
+        library_filters.addStretch(1)
+        library_filters.addWidget(self.filter_favorites)
+        library_filters.addWidget(self.filter_current)
+        layout.addLayout(library_filters)
+
         self.search_cards = QLineEdit()
-        self.search_cards.setPlaceholderText("Search titles, notes, and games…")
+        self.search_cards.setPlaceholderText("Search cards, screenshot text, and games…")
         self.search_cards.setClearButtonEnabled(True)
         self.search_cards.textChanged.connect(self.refresh_cards)
         layout.addWidget(self.search_cards)
@@ -310,9 +322,28 @@ class Dashboard(QMainWindow):
 
         self.card_list = QListWidget()
         self.card_list.itemDoubleClicked.connect(self._pin_selected)
+        self.card_list.currentItemChanged.connect(self._update_card_preview)
         self.card_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.card_list.customContextMenuRequested.connect(self._library_menu)
         layout.addWidget(self.card_list, 1)
+
+        self.card_preview = CardPreviewPanel()
+        self.card_preview.pin_requested.connect(self.show_pin)
+        self.card_preview.edit_requested.connect(self._edit_card)
+        self.card_preview.copy_requested.connect(self._copy_card)
+        self.card_preview.extract_text_requested.connect(self._extract_image_text)
+        self.preview_dock = QDockWidget("CARD PREVIEW", self)
+        self.preview_dock.setObjectName("cardPreviewDock")
+        self.preview_dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
+        )
+        self.preview_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable
+        )
+        self.preview_dock.setMinimumWidth(350)
+        self.preview_dock.setWidget(self.card_preview)
+        self.preview_dock.visibilityChanged.connect(self._preview_visibility_changed)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.preview_dock)
 
         self.shortcut_footer = QLabel()
         self.shortcut_footer.setObjectName("muted")
@@ -413,6 +444,10 @@ class Dashboard(QMainWindow):
         self.auto_hide_pins.setChecked(
             self.settings.value("profiles/auto_hide_pins", False, type=bool)
         )
+        preview_visible = self.settings.value("preview/visible", True, type=bool)
+        self._set_preview_visible(preview_visible)
+        if not preview_visible and not geometry:
+            self.resize(470, self.height())
 
     def _show_first_run_setup(self) -> None:
         completed = self.settings.value("onboarding/completed", False, type=bool)
@@ -1076,8 +1111,14 @@ class Dashboard(QMainWindow):
     def refresh_cards(self) -> None:
         if not hasattr(self, "card_list"):
             return
+        selected = self.card_list.currentItem()
+        selected_id = (
+            int(selected.data(Qt.ItemDataRole.UserRole)) if selected is not None else None
+        )
         game = self.game_input.text() if self.filter_current.isChecked() else None
         query = self.search_cards.text()
+        selected_item: QListWidgetItem | None = None
+        blocker = QSignalBlocker(self.card_list)
         self.card_list.clear()
         for card in self.store.list(game, query, self.filter_favorites.isChecked()):
             kind_icon = "▣" if card.kind is CardKind.IMAGE else "◆"
@@ -1099,7 +1140,46 @@ class Dashboard(QMainWindow):
                 tooltip = f"{tooltip}\n\nExtracted text:\n{card.content[:400]}"
             item.setToolTip(tooltip)
             self.card_list.addItem(item)
+            if card.id == selected_id:
+                selected_item = item
+        if selected_item is not None:
+            self.card_list.setCurrentItem(selected_item)
+        elif self.card_list.count():
+            self.card_list.setCurrentRow(0)
+        del blocker
+        self._update_card_preview(self.card_list.currentItem())
         self._update_trash_button()
+
+    def _update_card_preview(
+        self,
+        current: QListWidgetItem | None,
+        _previous: QListWidgetItem | None = None,
+    ) -> None:
+        if current is None:
+            self.card_preview.clear()
+            return
+        card = self.store.get(int(current.data(Qt.ItemDataRole.UserRole)))
+        if card is None:
+            self.card_preview.clear()
+            return
+        self.card_preview.set_card(card)
+
+    def _set_preview_visible(self, visible: bool) -> None:
+        was_visible = not self.preview_dock.isHidden()
+        dock_width = max(self.preview_dock.width(), self.preview_dock.minimumWidth())
+        self.preview_dock.setVisible(visible)
+        if self.isVisible() and visible != was_visible:
+            width = self.width() + dock_width if visible else self.width() - dock_width
+            self.resize(max(self.minimumWidth(), width), self.height())
+        self._preview_visibility_changed(visible)
+        self.settings.setValue("preview/visible", visible)
+
+    def _preview_visibility_changed(self, visible: bool) -> None:
+        blocker = QSignalBlocker(self.preview_button)
+        self.preview_button.setChecked(visible)
+        del blocker
+        if self.isVisible():
+            self.settings.setValue("preview/visible", visible)
 
     def _selected_card(self) -> Card | None:
         item = self.card_list.currentItem()

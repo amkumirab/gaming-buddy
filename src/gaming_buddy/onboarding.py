@@ -79,8 +79,9 @@ class OnboardingDialog(QDialog):
                 "3",
                 "Return without leaving the game",
                 f"Press {shortcuts['quick_finder']} to find and show any saved card, or "
-                f"{shortcuts['toggle_panel']} to open the full panel. The tray icon keeps "
-                "capture, pins, profiles, and this guide close by.",
+                f"{shortcuts['toggle_panel']} to open the full panel. Select a library card "
+                "to preview it and use its quick actions. The tray icon keeps everything "
+                "close by.",
             )
         )
 
