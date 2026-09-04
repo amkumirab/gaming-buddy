@@ -34,6 +34,7 @@ class Card:
     created_at: str = ""
     updated_at: str = ""
     deleted_at: str = ""
+    tags: tuple[str, ...] = ()
 
     def with_timestamps(self) -> Card:
         now = utc_now()

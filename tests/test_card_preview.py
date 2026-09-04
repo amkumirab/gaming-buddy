@@ -54,6 +54,7 @@ def test_image_card_shows_smooth_preview_and_details(
         favorite=True,
         pinned=True,
         created_at="2026-09-03T14:20:00+00:00",
+        tags=("map", "code"),
     )
     panel = CardPreviewPanel()
 
@@ -62,7 +63,9 @@ def test_image_card_shows_smooth_preview_and_details(
     assert panel.card is card
     assert panel.title.text() == "Maintenance map"
     assert panel.kind.text() == "IMAGE"
-    assert panel.game.text() == "Control · Favorite · Pinned"
+    assert panel.game.text().startswith("Control · Favorite · Pinned")
+    assert "#map" in panel.game.text()
+    assert "#code" in panel.game.text()
     assert "320 × 180 px" in panel.metadata.text()
     assert panel.content.toPlainText() == "SAFE CODE 0451"
     assert panel.pin_button.text() == "Show pin"

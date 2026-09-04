@@ -35,7 +35,9 @@ game window. The prototype is designed for quick interaction and stores its data
 - Adjust overlay opacity
 - Switch pins into click-through mode
 - Organize cards by game name
-- Search saved cards by title, note text, extracted screenshot text, or game
+- Add reusable tags such as map, boss, code, build, or puzzle to saved cards
+- Search saved cards by title, note text, extracted screenshot text, tag, or game
+- Filter the library by tag, card type, pinned state, favorites, or current game
 - Preview images and notes directly from the library with quick card actions
 - Find and show any saved card from a keyboard-first in-game search overlay
 - Mark important cards as favorites and filter the library
@@ -129,17 +131,19 @@ a `.sha256` file so the installer can be checked before it is run.
     pin, edit, copy, or extract screenshot text without opening a context menu. Close the
     panel when you want the compact layout and reopen it with **Preview**.
 14. Open **Keyboard shortcuts…** to personalize controls without restarting.
-15. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
+15. Choose **Edit** on a card to add comma-separated tags such as `map`, `boss`, or
+    `build`. Open **Filters** to combine tag, type, pinned, favorite, and game filters.
+16. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
     **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
-16. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
-17. Open a game, return with the panel shortcut, enter its name, and choose
+17. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
+18. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-18. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
+19. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
     Manual **Hide all pins** remains in effect when you return to the game.
-19. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+20. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
-20. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-21. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+21. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+22. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -164,6 +168,7 @@ gaming-buddy/
 │   ├── quick_finder.py # Keyboard-first saved-card search overlay
 │   ├── text_recognition.py # Local Windows screenshot text recognition
 │   ├── text_recognition_dialog.py # Recognition review and language controls
+│   ├── tags.py         # Tag normalization and display helpers
 │   ├── hotkeys.py      # Global keyboard shortcuts
 │   ├── image_annotation.py # Non-destructive screenshot annotation tools
 │   ├── image_import.py # Lossless image import and duplicate checks

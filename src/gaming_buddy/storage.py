@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Self
 
 from gaming_buddy.models import Card, CardKind, utc_now
+from gaming_buddy.tags import normalize_tags
 
 
 class CardStore:
@@ -13,6 +15,7 @@ class CardStore:
         self.database = database
         self._connection = sqlite3.connect(database)
         self._connection.row_factory = sqlite3.Row
+        self._connection.execute("PRAGMA foreign_keys = ON")
         self._create_schema()
 
     def _create_schema(self) -> None:
@@ -65,6 +68,18 @@ class CardStore:
                 "ALTER TABLE cards ADD COLUMN deleted_at TEXT NOT NULL DEFAULT ''"
             )
         self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS card_tags (
+                card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+                tag TEXT NOT NULL COLLATE NOCASE,
+                PRIMARY KEY (card_id, tag)
+            )
+            """
+        )
+        self._connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_card_tags_tag ON card_tags(tag COLLATE NOCASE)"
+        )
+        self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_cards_game_updated ON cards(game, updated_at DESC)"
         )
         self._connection.execute(
@@ -116,8 +131,10 @@ class CardStore:
                 card.updated_at,
             ),
         )
-        self._connection.commit()
         card.id = int(cursor.lastrowid)
+        card.tags = normalize_tags(card.tags)
+        self._replace_tags(card.id, card.tags)
+        self._connection.commit()
         return card
 
     def list(
@@ -126,6 +143,9 @@ class CardStore:
         query: str | None = None,
         favorites_only: bool = False,
         pinned_only: bool = False,
+        *,
+        kind: CardKind | None = None,
+        tag: str | None = None,
     ) -> list[Card]:
         clauses: list[str] = ["deleted_at = ''"]
         parameters: list[object] = []
@@ -138,14 +158,26 @@ class CardStore:
                 """
                 (title LIKE ? COLLATE NOCASE
                  OR content LIKE ? COLLATE NOCASE
-                 OR game LIKE ? COLLATE NOCASE)
+                 OR game LIKE ? COLLATE NOCASE
+                 OR EXISTS (
+                     SELECT 1 FROM card_tags
+                     WHERE card_id = cards.id AND tag LIKE ? COLLATE NOCASE
+                 ))
                 """
             )
-            parameters.extend((pattern, pattern, pattern))
+            parameters.extend((pattern, pattern, pattern, pattern))
         if favorites_only:
             clauses.append("favorite = 1")
         if pinned_only:
             clauses.append("pinned = 1")
+        if kind is not None:
+            clauses.append("kind = ?")
+            parameters.append(kind.value)
+        if tag is not None and tag.strip():
+            clauses.append(
+                "EXISTS (SELECT 1 FROM card_tags WHERE card_id = cards.id AND tag = ? COLLATE NOCASE)"
+            )
+            parameters.append(tag.strip())
 
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self._connection.execute(
@@ -155,19 +187,19 @@ class CardStore:
             """,
             parameters,
         ).fetchall()
-        return [self._row_to_card(row) for row in rows]
+        return self._cards_from_rows(rows)
 
     def get(self, card_id: int) -> Card | None:
         row = self._connection.execute(
             "SELECT * FROM cards WHERE id = ? AND deleted_at = ''", (card_id,)
         ).fetchone()
-        return self._row_to_card(row) if row else None
+        return self._row_to_card(row, self._tags_for_card(int(row["id"]))) if row else None
 
     def get_deleted(self, card_id: int) -> Card | None:
         row = self._connection.execute(
             "SELECT * FROM cards WHERE id = ? AND deleted_at != ''", (card_id,)
         ).fetchone()
-        return self._row_to_card(row) if row else None
+        return self._row_to_card(row, self._tags_for_card(int(row["id"]))) if row else None
 
     def list_deleted(self, query: str | None = None) -> list[Card]:
         parameters: list[object] = []
@@ -177,9 +209,13 @@ class CardStore:
             search = """
                 AND (title LIKE ? COLLATE NOCASE
                      OR content LIKE ? COLLATE NOCASE
-                     OR game LIKE ? COLLATE NOCASE)
+                     OR game LIKE ? COLLATE NOCASE
+                     OR EXISTS (
+                         SELECT 1 FROM card_tags
+                         WHERE card_id = cards.id AND tag LIKE ? COLLATE NOCASE
+                     ))
             """
-            parameters.extend((pattern, pattern, pattern))
+            parameters.extend((pattern, pattern, pattern, pattern))
         rows = self._connection.execute(
             f"""
             SELECT * FROM cards
@@ -188,7 +224,7 @@ class CardStore:
             """,
             parameters,
         ).fetchall()
-        return [self._row_to_card(row) for row in rows]
+        return self._cards_from_rows(rows)
 
     def deleted_count(self) -> int:
         row = self._connection.execute(
@@ -281,7 +317,15 @@ class CardStore:
         self._connection.commit()
         return cursor.rowcount
 
-    def update_details(self, card_id: int, *, title: str, game: str, content: str) -> bool:
+    def update_details(
+        self,
+        card_id: int,
+        *,
+        title: str,
+        game: str,
+        content: str,
+        tags: Sequence[str] | None = None,
+    ) -> bool:
         cursor = self._connection.execute(
             """
             UPDATE cards
@@ -290,8 +334,40 @@ class CardStore:
             """,
             (title.strip(), game.strip(), content, utc_now(), card_id),
         )
+        if cursor.rowcount > 0 and tags is not None:
+            self._replace_tags(card_id, tags)
         self._connection.commit()
         return cursor.rowcount > 0
+
+    def update_tags(self, card_id: int, tags: Sequence[str]) -> bool:
+        row = self._connection.execute(
+            "SELECT 1 FROM cards WHERE id = ? AND deleted_at = ''",
+            (card_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        self._replace_tags(card_id, tags)
+        self._connection.commit()
+        return True
+
+    def available_tags(self, game: str | None = None) -> list[str]:
+        parameters: list[object] = []
+        game_filter = ""
+        if game is not None and game.strip():
+            game_filter = " AND cards.game = ?"
+            parameters.append(game.strip())
+        rows = self._connection.execute(
+            f"""
+            SELECT card_tags.tag, COUNT(*) AS uses
+            FROM card_tags
+            JOIN cards ON cards.id = card_tags.card_id
+            WHERE cards.deleted_at = ''{game_filter}
+            GROUP BY card_tags.tag COLLATE NOCASE
+            ORDER BY uses DESC, card_tags.tag COLLATE NOCASE
+            """,
+            parameters,
+        ).fetchall()
+        return [str(row["tag"]) for row in rows]
 
     def move_to_trash(self, card_id: int) -> bool:
         now = utc_now()
@@ -336,7 +412,7 @@ class CardStore:
             "SELECT * FROM cards WHERE deleted_at != '' AND deleted_at < ?",
             (cutoff,),
         ).fetchall()
-        cards = [self._row_to_card(row) for row in rows]
+        cards = self._cards_from_rows(rows)
         if not cards:
             return []
         self._connection.executemany(
@@ -361,8 +437,45 @@ class CardStore:
     def __exit__(self, *_: object) -> None:
         self.close()
 
+    def _cards_from_rows(self, rows: Sequence[sqlite3.Row]) -> list[Card]:
+        if not rows:
+            return []
+        card_ids = [int(row["id"]) for row in rows]
+        tags_by_card: dict[int, list[str]] = {card_id: [] for card_id in card_ids}
+        for start in range(0, len(card_ids), 900):
+            chunk = card_ids[start : start + 900]
+            placeholders = ",".join("?" for _ in chunk)
+            tag_rows = self._connection.execute(
+                f"""
+                SELECT card_id, tag FROM card_tags
+                WHERE card_id IN ({placeholders})
+                ORDER BY tag COLLATE NOCASE
+                """,
+                chunk,
+            ).fetchall()
+            for tag_row in tag_rows:
+                tags_by_card[int(tag_row["card_id"])].append(str(tag_row["tag"]))
+        return [
+            self._row_to_card(row, tuple(tags_by_card[int(row["id"])])) for row in rows
+        ]
+
+    def _tags_for_card(self, card_id: int) -> tuple[str, ...]:
+        rows = self._connection.execute(
+            "SELECT tag FROM card_tags WHERE card_id = ? ORDER BY tag COLLATE NOCASE",
+            (card_id,),
+        ).fetchall()
+        return tuple(str(row["tag"]) for row in rows)
+
+    def _replace_tags(self, card_id: int, tags: Sequence[str]) -> None:
+        normalized = normalize_tags(tags)
+        self._connection.execute("DELETE FROM card_tags WHERE card_id = ?", (card_id,))
+        self._connection.executemany(
+            "INSERT INTO card_tags (card_id, tag) VALUES (?, ?)",
+            ((card_id, tag) for tag in normalized),
+        )
+
     @staticmethod
-    def _row_to_card(row: sqlite3.Row) -> Card:
+    def _row_to_card(row: sqlite3.Row, tags: tuple[str, ...] = ()) -> Card:
         return Card(
             id=int(row["id"]),
             kind=CardKind(row["kind"]),
@@ -382,4 +495,5 @@ class CardStore:
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
             deleted_at=str(row["deleted_at"]),
+            tags=tags,
         )

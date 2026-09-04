@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from gaming_buddy.models import Card, CardKind
+from gaming_buddy.tags import format_tags
 
 MAX_RECENT_SEARCHES = 5
 
@@ -29,7 +30,8 @@ def find_cards(cards: Sequence[Card], query: str, active_game: str = "") -> list
         title = card.title.casefold()
         game = card.game.casefold()
         content = card.content.casefold()
-        combined = f"{title} {game} {content}"
+        tags = " ".join(card.tags).casefold()
+        combined = f"{title} {game} {content} {tags}"
         if terms and not all(term in combined for term in terms):
             continue
         matches.append((index, card))
@@ -216,6 +218,9 @@ class QuickFinderDialog(QDialog):
             favorite = "★ " if card.favorite else ""
             kind = "▣" if card.kind is CardKind.IMAGE else "◆"
             details = " · ".join((card.game or "General", *card_statuses(card)))
+            tags = format_tags(card.tags)
+            if tags:
+                details = f"{details} · {tags}"
             item = QListWidgetItem(f"{favorite}{kind}  {card.title}\n     {details}")
             item.setData(Qt.ItemDataRole.UserRole, card.id)
             if card.kind is CardKind.NOTE:

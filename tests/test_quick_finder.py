@@ -46,6 +46,15 @@ def test_search_matches_multiple_terms_across_card_fields() -> None:
     assert [card.id for card in matches] == [1]
 
 
+def test_search_matches_card_tags() -> None:
+    cards = [
+        Card(1, CardKind.NOTE, "Control", "Route", content="Turn left"),
+        Card(2, CardKind.IMAGE, "Control", "Arena", tags=("boss", "map")),
+    ]
+
+    assert [card.id for card in find_cards(cards, "boss")] == [2]
+
+
 def test_card_statuses_describe_workspace_state() -> None:
     card = Card(
         1,

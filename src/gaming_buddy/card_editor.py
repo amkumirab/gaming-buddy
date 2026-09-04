@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from gaming_buddy.models import Card, CardKind
+from gaming_buddy.tags import MAX_TAG_LENGTH, MAX_TAGS_PER_CARD, normalize_tags
 
 
 class CardEditor(QDialog):
@@ -31,8 +32,16 @@ class CardEditor(QDialog):
         self.title_input.setMaxLength(120)
         self.game_input = QLineEdit(card.game)
         self.game_input.setMaxLength(80)
+        self.tags_input = QLineEdit(", ".join(card.tags))
+        self.tags_input.setMaxLength(420)
+        self.tags_input.setPlaceholderText("map, boss, code, build…")
+        self.tags_input.setToolTip(
+            f"Separate tags with commas · up to {MAX_TAGS_PER_CARD} tags · "
+            f"{MAX_TAG_LENGTH} characters each"
+        )
         form.addRow("Title", self.title_input)
         form.addRow("Game", self.game_input)
+        form.addRow("Tags", self.tags_input)
 
         self.content_input: QTextEdit | None = None
         if card.kind is CardKind.NOTE:
@@ -66,6 +75,9 @@ class CardEditor(QDialog):
             else self.card.content
         )
         return self.title_input.text().strip(), self.game_input.text().strip(), content
+
+    def tags(self) -> tuple[str, ...]:
+        return normalize_tags(self.tags_input.text())
 
     def accept(self) -> None:
         title, game, content = self.values()

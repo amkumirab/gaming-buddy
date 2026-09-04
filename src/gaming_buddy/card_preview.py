@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from gaming_buddy.models import Card, CardKind
+from gaming_buddy.tags import format_tags
 
 
 def format_file_size(size: int) -> str:
@@ -191,7 +192,8 @@ class CardPreviewPanel(QFrame):
             statuses.append("Favorite")
         if card.pinned:
             statuses.append("Pinned")
-        self.game.setText(" · ".join(statuses))
+        tag_text = format_tags(card.tags)
+        self.game.setText(" · ".join(statuses) + (f"\n{tag_text}" if tag_text else ""))
 
         saved = format_saved_at(card.created_at)
         if is_image:

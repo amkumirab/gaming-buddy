@@ -24,6 +24,7 @@ def test_image_text_can_be_reviewed_and_edited(application: QApplication) -> Non
         "Safe",
         content="SAFE CODE 0451",
         image_path="safe.png",
+        tags=("code", "puzzle"),
     )
     editor = CardEditor(card)
 
@@ -32,4 +33,7 @@ def test_image_text_can_be_reviewed_and_edited(application: QApplication) -> Non
     editor.content_input.setPlainText("SAFE CODE 0421")
 
     assert editor.values() == ("Safe", "Control", "SAFE CODE 0421")
+    assert editor.tags() == ("code", "puzzle")
+    editor.tags_input.setText(" Map,  boss ; MAP, #route ")
+    assert editor.tags() == ("Map", "boss", "route")
     editor.close()

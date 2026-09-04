@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
+    QActionGroup,
     QCloseEvent,
     QDesktopServices,
     QDragEnterEvent,
@@ -74,6 +75,7 @@ from gaming_buddy.quick_finder import QuickFinderDialog, updated_search_history
 from gaming_buddy.shortcut_dialog import ShortcutDialog
 from gaming_buddy.startup import StartupError, StartupManager
 from gaming_buddy.storage import CardStore
+from gaming_buddy.tags import format_tags
 from gaming_buddy.text_recognition import (
     RecognitionLanguage,
     TextRecognitionError,
@@ -112,6 +114,8 @@ class Dashboard(QMainWindow):
         self._quick_finder: QuickFinderDialog | None = None
         self._recognition_languages: list[RecognitionLanguage] | None = None
         self._text_recognition_dialog: TextRecognitionDialog | None = None
+        self._library_kind_filter: CardKind | None = None
+        self._library_tag_filter = ""
         self._auto_hidden_pin_ids: set[int] = set()
         self.pin_visibility = PinVisibilityController(self)
         self.pin_visibility.auto_hide_requested.connect(self._hide_pins_automatically)
@@ -283,21 +287,48 @@ class Dashboard(QMainWindow):
         self.preview_button.setCheckable(True)
         self.preview_button.setChecked(True)
         self.preview_button.clicked.connect(self._set_preview_visible)
-        self.filter_current = QCheckBox("Current game only")
+        self.filter_current = QAction("Current game only", self)
+        self.filter_current.setCheckable(True)
         self.filter_current.toggled.connect(self.refresh_cards)
-        self.filter_favorites = QCheckBox("Favorites")
+        self.filter_favorites = QAction("Favorites only", self)
+        self.filter_favorites.setCheckable(True)
         self.filter_favorites.toggled.connect(self.refresh_cards)
+        self.filter_pinned = QAction("Pinned only", self)
+        self.filter_pinned.setCheckable(True)
+        self.filter_pinned.toggled.connect(self.refresh_cards)
+        self.library_filter_menu = QMenu(self)
+        self.library_filter_menu.addAction(self.filter_favorites)
+        self.library_filter_menu.addAction(self.filter_current)
+        self.library_filter_menu.addAction(self.filter_pinned)
+        self.library_filter_menu.addSeparator()
+        type_menu = self.library_filter_menu.addMenu("Card type")
+        self.type_filter_group = QActionGroup(self)
+        self.type_filter_group.setExclusive(True)
+        for label, value in (
+            ("All types", ""),
+            ("Notes", CardKind.NOTE.value),
+            ("Images", CardKind.IMAGE.value),
+        ):
+            action = type_menu.addAction(label)
+            action.setCheckable(True)
+            action.setData(value)
+            action.setChecked(not value)
+            self.type_filter_group.addAction(action)
+        self.type_filter_group.triggered.connect(self._set_library_kind_filter)
+        self.tag_filter_menu = self.library_filter_menu.addMenu("Tag")
+        self.tag_filter_menu.aboutToShow.connect(self._rebuild_tag_filter_menu)
+        self.library_filter_menu.addSeparator()
+        clear_filters = self.library_filter_menu.addAction("Clear filters")
+        clear_filters.triggered.connect(self._clear_library_filters)
+        self.filter_button = QPushButton("Filters")
+        self.filter_button.setObjectName("compact")
+        self.filter_button.setMenu(self.library_filter_menu)
         library_header.addWidget(library_label)
         library_header.addWidget(self.trash_button)
         library_header.addWidget(self.preview_button)
+        library_header.addWidget(self.filter_button)
         library_header.addStretch(1)
         layout.addLayout(library_header)
-
-        library_filters = QHBoxLayout()
-        library_filters.addStretch(1)
-        library_filters.addWidget(self.filter_favorites)
-        library_filters.addWidget(self.filter_current)
-        layout.addLayout(library_filters)
 
         self.search_cards = QLineEdit()
         self.search_cards.setPlaceholderText("Search cards, screenshot text, and games…")
@@ -1120,7 +1151,14 @@ class Dashboard(QMainWindow):
         selected_item: QListWidgetItem | None = None
         blocker = QSignalBlocker(self.card_list)
         self.card_list.clear()
-        for card in self.store.list(game, query, self.filter_favorites.isChecked()):
+        for card in self.store.list(
+            game,
+            query,
+            self.filter_favorites.isChecked(),
+            self.filter_pinned.isChecked(),
+            kind=self._library_kind_filter,
+            tag=self._library_tag_filter,
+        ):
             kind_icon = "▣" if card.kind is CardKind.IMAGE else "◆"
             favorite_icon = "★ " if card.favorite else ""
             pinned_icon = "● " if card.pinned else ""
@@ -1130,14 +1168,19 @@ class Dashboard(QMainWindow):
             lock_label = " · Locked" if card.pinned and card.locked else ""
             collapsed_label = " · Collapsed" if card.pinned and card.collapsed else ""
             text_label = " · Text indexed" if card.kind is CardKind.IMAGE and card.content else ""
+            tag_text = format_tags(card.tags[:3])
+            tag_label = f" · {tag_text}" if tag_text else ""
             item = QListWidgetItem(
                 f"{icon}  {card.title}\n     "
                 f"{game_label}{workspace_label}{lock_label}{collapsed_label}{text_label}"
+                f"{tag_label}"
             )
             item.setData(Qt.ItemDataRole.UserRole, card.id)
             tooltip = "Saved in the restored workspace" if card.pinned else "Double-click to pin"
             if card.kind is CardKind.IMAGE and card.content.strip():
                 tooltip = f"{tooltip}\n\nExtracted text:\n{card.content[:400]}"
+            if card.tags:
+                tooltip = f"{tooltip}\n\nTags: {', '.join(card.tags)}"
             item.setToolTip(tooltip)
             self.card_list.addItem(item)
             if card.id == selected_id:
@@ -1148,7 +1191,80 @@ class Dashboard(QMainWindow):
             self.card_list.setCurrentRow(0)
         del blocker
         self._update_card_preview(self.card_list.currentItem())
+        self._update_filter_button()
         self._update_trash_button()
+
+    def _set_library_kind_filter(self, action: QAction) -> None:
+        value = str(action.data() or "")
+        self._library_kind_filter = CardKind(value) if value else None
+        self.refresh_cards()
+
+    def _rebuild_tag_filter_menu(self) -> None:
+        self.tag_filter_menu.clear()
+        game = self.game_input.text() if self.filter_current.isChecked() else None
+        tags = self.store.available_tags(game)
+        if self._library_tag_filter and not any(
+            tag.casefold() == self._library_tag_filter.casefold() for tag in tags
+        ):
+            tags.insert(0, self._library_tag_filter)
+        all_tags = self.tag_filter_menu.addAction("All tags")
+        all_tags.setCheckable(True)
+        all_tags.setChecked(not self._library_tag_filter)
+        all_tags.triggered.connect(
+            lambda _checked=False: self._set_library_tag_filter("")
+        )
+        if tags:
+            self.tag_filter_menu.addSeparator()
+        for tag in tags:
+            action = self.tag_filter_menu.addAction(f"#{tag}")
+            action.setCheckable(True)
+            action.setChecked(tag.casefold() == self._library_tag_filter.casefold())
+            action.triggered.connect(
+                lambda _checked=False, selected=tag: self._set_library_tag_filter(selected)
+            )
+
+    def _set_library_tag_filter(self, tag: str) -> None:
+        self._library_tag_filter = tag
+        self.refresh_cards()
+
+    def _clear_library_filters(self) -> None:
+        blockers = [
+            QSignalBlocker(self.filter_favorites),
+            QSignalBlocker(self.filter_current),
+            QSignalBlocker(self.filter_pinned),
+        ]
+        self.filter_favorites.setChecked(False)
+        self.filter_current.setChecked(False)
+        self.filter_pinned.setChecked(False)
+        self.type_filter_group.actions()[0].setChecked(True)
+        self._library_kind_filter = None
+        self._library_tag_filter = ""
+        del blockers
+        self.refresh_cards()
+
+    def _update_filter_button(self) -> None:
+        active = sum(
+            (
+                self.filter_favorites.isChecked(),
+                self.filter_current.isChecked(),
+                self.filter_pinned.isChecked(),
+                self._library_kind_filter is not None,
+                bool(self._library_tag_filter),
+            )
+        )
+        self.filter_button.setText(f"Filters ({active})" if active else "Filters")
+        details: list[str] = []
+        if self._library_kind_filter is not None:
+            details.append(self._library_kind_filter.value.title())
+        if self._library_tag_filter:
+            details.append(f"#{self._library_tag_filter}")
+        if self.filter_pinned.isChecked():
+            details.append("Pinned")
+        if self.filter_favorites.isChecked():
+            details.append("Favorites")
+        if self.filter_current.isChecked():
+            details.append("Current game")
+        self.filter_button.setToolTip(" · ".join(details) or "Filter saved cards")
 
     def _update_card_preview(
         self,
@@ -1282,6 +1398,7 @@ class Dashboard(QMainWindow):
             title=title,
             game=game or "General",
             content=content,
+            tags=dialog.tags(),
         ):
             QMessageBox.warning(self, "Edit failed", "The selected card no longer exists.")
             return
@@ -1426,6 +1543,7 @@ class Dashboard(QMainWindow):
             game=card.game or "General",
             title=f"{card.title} · Annotated"[:120],
             content=card.content,
+            tags=card.tags,
             image_path=str(destination),
             opacity=card.opacity,
             width=max(240, min(520, image.width())),

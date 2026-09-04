@@ -90,6 +90,7 @@ def test_card_details_can_be_edited_without_losing_workspace_state(tmp_path):
                 pinned=True,
                 x=240,
                 y=160,
+                tags=("clue",),
             )
         )
 
@@ -108,6 +109,7 @@ def test_card_details_can_be_edited_without_losing_workspace_state(tmp_path):
         )
         assert updated.favorite is True
         assert updated.pinned is True
+        assert updated.tags == ("clue",)
         assert (updated.x, updated.y) == (240, 160)
         assert not store.update_details(9999, title="Missing", game="Game", content="")
 
@@ -162,6 +164,66 @@ def test_search_and_favorite_filters(tmp_path):
         assert [card.id for card in store.list(query="right 15")] == [screenshot.id]
         assert [card.id for card in store.list(favorites_only=True)] == [build.id]
         assert store.list("Control", "strength") == []
+
+
+def test_tags_are_normalized_searchable_and_filterable(tmp_path):
+    database = tmp_path / "cards.sqlite3"
+    with CardStore(database) as store:
+        map_card = store.add(
+            Card(
+                None,
+                CardKind.IMAGE,
+                "Control",
+                "Maintenance",
+                image_path=str(tmp_path / "map.png"),
+                tags=("Map", " puzzle ", "MAP"),
+            )
+        )
+        boss_card = store.add(
+            Card(
+                None,
+                CardKind.NOTE,
+                "Elden Ring",
+                "Margit",
+                content="Use summons",
+                tags=("boss", "strategy"),
+            )
+        )
+
+        assert map_card.tags == ("Map", "puzzle")
+        assert store.get(map_card.id).tags == ("Map", "puzzle")
+        assert [card.id for card in store.list(query="PUZZLE")] == [map_card.id]
+        assert [card.id for card in store.list(tag="map")] == [map_card.id]
+        assert [card.id for card in store.list(kind=CardKind.NOTE)] == [boss_card.id]
+        assert store.available_tags() == ["boss", "Map", "puzzle", "strategy"]
+        assert store.available_tags("Control") == ["Map", "puzzle"]
+
+        assert store.update_tags(boss_card.id, ("Boss", "route"))
+        assert store.get(boss_card.id).tags == ("Boss", "route")
+        assert not store.update_tags(9999, ("missing",))
+
+    with CardStore(database) as reopened:
+        assert reopened.get(map_card.id).tags == ("Map", "puzzle")
+        assert reopened.get(boss_card.id).tags == ("Boss", "route")
+
+
+def test_tags_survive_trash_restore_and_are_removed_with_card(tmp_path):
+    with CardStore(tmp_path / "cards.sqlite3") as store:
+        card = store.add(
+            Card(None, CardKind.NOTE, "Game", "Route", content="North", tags=("map",))
+        )
+
+        assert store.move_to_trash(card.id)
+        assert store.get_deleted(card.id).tags == ("map",)
+        assert [item.id for item in store.list_deleted("MAP")] == [card.id]
+        assert store.restore(card.id)
+        assert store.get(card.id).tags == ("map",)
+        assert store.move_to_trash(card.id)
+        assert store.delete_permanently(card.id)
+        tags = store._connection.execute(
+            "SELECT tag FROM card_tags WHERE card_id = ?", (card.id,)
+        ).fetchall()
+        assert tags == []
 
 
 def test_pinned_workspace_survives_database_reopen(tmp_path):
@@ -250,6 +312,8 @@ def test_existing_database_gets_workspace_columns(tmp_path):
         assert store.update_pinned(cards[0].id, True)
         assert store.update_locked(cards[0].id, True)
         assert store.update_collapsed(cards[0].id, True)
+        assert store.update_tags(cards[0].id, ("legacy", "clue"))
+        assert store.get(cards[0].id).tags == ("clue", "legacy")
 
 
 def test_bulk_collapse_only_changes_pinned_cards(tmp_path):

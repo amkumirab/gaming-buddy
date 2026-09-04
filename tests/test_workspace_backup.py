@@ -44,6 +44,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
                 pinned=True,
                 locked=True,
                 collapsed=True,
+                tags=("puzzle", "clue"),
             )
         )
         source_store.add(
@@ -54,6 +55,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
                 title="Map",
                 content="SAFE CODE 0451",
                 image_path=str(image_path),
+                tags=("map", "code"),
             )
         )
         backup = tmp_path / "workspace.zip"
@@ -89,6 +91,8 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
         restored_note = next(card for card in cards if card.kind is CardKind.NOTE)
         assert restored_note.locked is True
         assert restored_note.collapsed is True
+        assert restored_note.tags == ("clue", "puzzle")
+        assert restored_image.tags == ("code", "map")
         assert restored_image.image_path.startswith(str(restored_captures))
         assert restored_image.image_path != str(image_path)
         assert restored_image.content == "SAFE CODE 0451"
@@ -101,6 +105,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
         assert restored_settings.value("shortcuts/quick_finder") == "Ctrl+Alt+F"
         assert restored_settings.value("window_geometry") is None
 
+        assert restored_store.update_tags(restored_image.id, ("local",))
         repeated = restore_workspace_backup(
             backup,
             restored_store,
@@ -110,6 +115,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
         assert repeated.imported_cards == 0
         assert repeated.duplicate_cards == 2
         assert len(restored_store.list()) == 2
+        assert restored_store.get(restored_image.id).tags == ("code", "local", "map")
     finally:
         restored_store.close()
 

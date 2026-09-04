@@ -15,6 +15,7 @@ from PySide6.QtCore import QSettings
 
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.storage import CardStore
+from gaming_buddy.tags import normalize_tags
 
 BACKUP_FORMAT = "gaming-buddy-workspace"
 BACKUP_VERSION = 1
@@ -153,7 +154,7 @@ def restore_workspace_backup(
 ) -> RestoreResult:
     _, records, portable_settings = _read_and_verify(source)
     captures_dir.mkdir(parents=True, exist_ok=True)
-    existing_identities = {_card_identity(card) for card in store.list()}
+    existing_cards = {_card_identity(card): card for card in store.list()}
     imported = 0
     duplicates = 0
     skipped = 0
@@ -180,7 +181,12 @@ def restore_workspace_backup(
                 image_digest = _sha256_bytes(image_bytes)
 
             identity = _record_identity(record, image_digest)
-            if identity in existing_identities:
+            existing = existing_cards.get(identity)
+            if existing is not None:
+                if existing.id is not None and card.tags:
+                    merged_tags = normalize_tags((*existing.tags, *card.tags))
+                    store.update_tags(existing.id, merged_tags)
+                    existing.tags = merged_tags
                 duplicates += 1
                 continue
 
@@ -195,7 +201,7 @@ def restore_workspace_backup(
                 card.image_path = str(destination)
 
             store.add(card)
-            existing_identities.add(identity)
+            existing_cards[identity] = card
             imported += 1
 
     restored_settings = 0
@@ -336,6 +342,7 @@ def _card_to_record(card: Card, image_archive: str) -> dict[str, Any]:
         "game": card.game,
         "title": card.title,
         "content": card.content,
+        "tags": list(card.tags),
         "image_archive": image_archive,
         "opacity": card.opacity,
         "x": card.x,
@@ -356,6 +363,9 @@ def _record_to_card(record: dict[str, Any]) -> tuple[Card, str]:
     title = str(record["title"]).strip()
     if not title:
         raise ValueError("Card title is empty")
+    raw_tags = record.get("tags", [])
+    if not isinstance(raw_tags, list):
+        raise TypeError("Card tags are invalid")
     card = Card(
         id=None,
         kind=kind,
@@ -373,6 +383,7 @@ def _record_to_card(record: dict[str, Any]) -> tuple[Card, str]:
         collapsed=bool(record.get("collapsed", False)),
         created_at=str(record.get("created_at", "")),
         updated_at=str(record.get("updated_at", "")),
+        tags=normalize_tags(str(tag) for tag in raw_tags),
     )
     return card, str(record.get("image_archive", ""))
 
