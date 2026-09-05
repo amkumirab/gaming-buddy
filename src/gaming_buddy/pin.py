@@ -252,6 +252,7 @@ class PinWidget(QWidget):
     ) -> None:
         super().__init__()
         self.card = card
+        self._temporary_opacity: float | None = None
         self._on_layout_changed = on_layout_changed
         self._on_unpin = on_unpin
         self._on_delete = on_delete
@@ -378,6 +379,14 @@ class PinWidget(QWidget):
         self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, enabled)
         if was_visible:
             self.show()
+
+    def set_temporary_opacity(self, opacity: float | None) -> None:
+        self._temporary_opacity = (
+            None if opacity is None else min(1.0, max(0.2, opacity))
+        )
+        self.setWindowOpacity(
+            self.card.opacity if self._temporary_opacity is None else self._temporary_opacity
+        )
 
     def contextMenuEvent(self, event: object) -> None:
         menu = QMenu(self)
@@ -552,5 +561,6 @@ class PinWidget(QWidget):
         self.card.width = geometry.width()
         if not self.card.collapsed:
             self.card.height = geometry.height()
-        self.card.opacity = self.windowOpacity()
+        if self._temporary_opacity is None:
+            self.card.opacity = self.windowOpacity()
         self._on_layout_changed(self.card)

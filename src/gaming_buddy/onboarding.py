@@ -80,8 +80,9 @@ class OnboardingDialog(QDialog):
                 "Return without leaving the game",
                 f"Press {shortcuts['quick_finder']} to find and show any saved card, or "
                 f"{shortcuts['toggle_panel']} to open the full panel. Preview library cards, "
-                "organize them with tags and filters, or use their quick actions. The tray "
-                "icon keeps everything close by.",
+                "organize them with tags and filters, or use their quick actions. Press "
+                f"{shortcuts['toggle_focus_mode']} for a distraction-free pin layout. The "
+                "tray icon keeps everything close by.",
             )
         )
 

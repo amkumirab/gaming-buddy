@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 from gaming_buddy.capture import SelectionOverlay, begin_capture
 from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.card_preview import CardPreviewPanel
+from gaming_buddy.focus_mode import FocusModeState, PinPresentation
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
 from gaming_buddy.image_annotation import (
     AnnotationDialog,
@@ -116,6 +117,7 @@ class Dashboard(QMainWindow):
         self._text_recognition_dialog: TextRecognitionDialog | None = None
         self._library_kind_filter: CardKind | None = None
         self._library_tag_filter = ""
+        self.focus_mode = FocusModeState()
         self._auto_hidden_pin_ids: set[int] = set()
         self.pin_visibility = PinVisibilityController(self)
         self.pin_visibility.auto_hide_requested.connect(self._hide_pins_automatically)
@@ -238,6 +240,24 @@ class Dashboard(QMainWindow):
         self.click_through = QCheckBox()
         self.click_through.toggled.connect(self.set_click_through)
         layout.addWidget(self.click_through)
+
+        focus_controls = QHBoxLayout()
+        self.focus_button = QPushButton()
+        self.focus_button.setCheckable(True)
+        self.focus_button.toggled.connect(self.set_focus_mode)
+        self.focus_opacity_label = QLabel("Opacity 70%")
+        self.focus_opacity_label.setObjectName("muted")
+        self.focus_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.focus_opacity_slider.setRange(30, 100)
+        self.focus_opacity_slider.setValue(70)
+        self.focus_opacity_slider.setToolTip(
+            "Temporarily applies the same opacity to every pin in focus mode."
+        )
+        self.focus_opacity_slider.valueChanged.connect(self._set_focus_opacity)
+        focus_controls.addWidget(self.focus_button)
+        focus_controls.addWidget(self.focus_opacity_label)
+        focus_controls.addWidget(self.focus_opacity_slider, 1)
+        layout.addLayout(focus_controls)
 
         workspace_controls = QHBoxLayout()
         show_pins = QPushButton("Show saved pins")
@@ -409,6 +429,9 @@ class Dashboard(QMainWindow):
         show_pins_action.triggered.connect(self.show_all_pins)
         hide_pins_action = QAction("Hide all pins", menu)
         hide_pins_action.triggered.connect(self.hide_all_pins)
+        self.focus_mode_action = QAction("Focus mode", menu)
+        self.focus_mode_action.setCheckable(True)
+        self.focus_mode_action.triggered.connect(self.set_focus_mode)
         collapse_pins_action = QAction("Collapse all pins", menu)
         collapse_pins_action.triggered.connect(self.collapse_all_pins)
         expand_pins_action = QAction("Expand all pins", menu)
@@ -444,6 +467,7 @@ class Dashboard(QMainWindow):
         menu.addSeparator()
         menu.addAction(show_pins_action)
         menu.addAction(hide_pins_action)
+        menu.addAction(self.focus_mode_action)
         menu.addAction(collapse_pins_action)
         menu.addAction(expand_pins_action)
         menu.addAction(unlock_pins_action)
@@ -471,6 +495,10 @@ class Dashboard(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
+        self.focus_opacity_slider.setValue(
+            min(100, max(30, self.settings.value("focus/opacity", 70, type=int)))
+        )
+        self._set_focus_opacity(self.focus_opacity_slider.value())
         self.auto_profiles.setChecked(self.settings.value("profiles/auto_switch", False, type=bool))
         self.auto_hide_pins.setChecked(
             self.settings.value("profiles/auto_hide_pins", False, type=bool)
@@ -592,6 +620,9 @@ class Dashboard(QMainWindow):
             else None
         )
         self._focused_game = game
+        if self.focus_mode.active:
+            self.pin_visibility.hide_timer.stop()
+            return
         self.pin_visibility.update_focus(game is not None)
 
     def _update_detected_label(self, application: ActiveApplication) -> None:
@@ -609,7 +640,10 @@ class Dashboard(QMainWindow):
             self.statusBar().showMessage(f"Switched to {game} profile", 3000)
 
     def _show_profile_workspace(self, game: str) -> None:
-        if self.pin_visibility.manually_hidden or self.pin_visibility.automatically_hidden:
+        if (
+            not self.focus_mode.active
+            and (self.pin_visibility.manually_hidden or self.pin_visibility.automatically_hidden)
+        ):
             for pin in self.pins.values():
                 pin.hide()
             return
@@ -650,12 +684,16 @@ class Dashboard(QMainWindow):
         finder = self.shortcuts["quick_finder"]
         capture = self.shortcuts["capture_area"]
         click_through = self.shortcuts["toggle_click_through"]
+        focus_mode = self.shortcuts["toggle_focus_mode"]
         if hasattr(self, "click_through"):
             self.click_through.setText(f"Click-through pins  ({click_through})")
         if hasattr(self, "shortcut_footer"):
             self.shortcut_footer.setText(
-                f"{panel} panel  •  {finder} find  •  {capture} capture"
+                f"{panel} panel  •  {finder} find  •  {capture} capture  •  "
+                f"{focus_mode} focus"
             )
+        if hasattr(self, "focus_button"):
+            self.focus_button.setText(f"Focus mode  ({focus_mode})")
 
     def backup_workspace(self) -> None:
         timestamp = datetime.now(UTC).astimezone().strftime("%Y%m%d")
@@ -758,6 +796,10 @@ class Dashboard(QMainWindow):
         self.profile_store = GameProfileStore(self.settings)
         self.game_input.setText(str(self.settings.value("game", "")))
         self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
+        self.focus_opacity_slider.setValue(
+            min(100, max(30, self.settings.value("focus/opacity", 70, type=int)))
+        )
+        self._set_focus_opacity(self.focus_opacity_slider.value())
         self.auto_profiles.setChecked(self.settings.value("profiles/auto_switch", False, type=bool))
         self.auto_hide_pins.setChecked(
             self.settings.value("profiles/auto_hide_pins", False, type=bool)
@@ -983,15 +1025,25 @@ class Dashboard(QMainWindow):
     def show_pin(self, card: Card, *, persist: bool = True) -> None:
         if card.id is None:
             return
-        if persist:
+        if persist and not self.focus_mode.active:
             was_auto_hidden = self.pin_visibility.automatically_hidden
             self.pin_visibility.manual_show()
             if was_auto_hidden:
                 self._restore_pins_after_auto_hide()
             self.store.update_pinned(card.id, True)
             card.pinned = True
+        elif persist:
+            self.store.update_pinned(card.id, True)
+            card.pinned = True
         existing = self.pins.get(card.id)
         if existing is not None:
+            if self.focus_mode.active:
+                self.focus_mode.remember_pin(
+                    card.id,
+                    PinPresentation(persist, existing.windowOpacity()),
+                )
+                existing.set_click_through(True)
+                existing.set_temporary_opacity(self.focus_opacity_slider.value() / 100)
             existing.show()
             existing.raise_()
             if persist:
@@ -1013,6 +1065,13 @@ class Dashboard(QMainWindow):
         )
         pin.set_click_through(self.click_through.isChecked())
         self.pins[card.id] = pin
+        if self.focus_mode.active:
+            self.focus_mode.remember_pin(
+                card.id,
+                PinPresentation(persist, card.opacity),
+            )
+            pin.set_click_through(True)
+            pin.set_temporary_opacity(self.focus_opacity_slider.value() / 100)
         self._save_pin_layout(card)
         pin.show()
         if persist:
@@ -1068,6 +1127,8 @@ class Dashboard(QMainWindow):
         self.statusBar().showMessage(message, 2500)
 
     def _hide_pins_automatically(self) -> None:
+        if self.focus_mode.active:
+            return
         self._auto_hidden_pin_ids = {
             card_id for card_id, pin in self.pins.items() if pin.isVisible()
         }
@@ -1639,14 +1700,100 @@ class Dashboard(QMainWindow):
     def set_click_through(self, enabled: bool) -> None:
         self.settings.setValue("click_through", enabled)
         for pin in self.pins.values():
-            pin.set_click_through(enabled)
+            pin.set_click_through(True if self.focus_mode.active else enabled)
         message = "Pins are click-through" if enabled else "Pins are interactive"
         self.statusBar().showMessage(message, 2500)
 
     def toggle_click_through(self) -> None:
+        if self.focus_mode.active:
+            self.statusBar().showMessage(
+                "Click-through stays enabled until focus mode ends",
+                2500,
+            )
+            return
         self.click_through.setChecked(not self.click_through.isChecked())
 
+    def _set_focus_opacity(self, value: int) -> None:
+        self.focus_opacity_label.setText(f"Opacity {value}%")
+        self.settings.setValue("focus/opacity", value)
+        if self.focus_mode.active:
+            for pin in self.pins.values():
+                if pin.isVisible():
+                    pin.set_temporary_opacity(value / 100)
+
+    def set_focus_mode(self, enabled: bool) -> None:
+        if enabled == self.focus_mode.active:
+            self._sync_focus_controls()
+            return
+        if enabled:
+            cards = self.store.list(pinned_only=True)
+            if self.auto_profiles.isChecked() and self._focused_game:
+                cards = [
+                    card
+                    for card in cards
+                    if belongs_to_profile(card.game, self._focused_game)
+                ]
+            if not cards:
+                self.statusBar().showMessage(
+                    "Pin at least one card before starting focus mode",
+                    3000,
+                )
+                self._sync_focus_controls()
+                return
+            presentations = {
+                card_id: PinPresentation(pin.isVisible(), pin.windowOpacity())
+                for card_id, pin in self.pins.items()
+            }
+            self.focus_mode.enter(
+                panel_visible=self.isVisible(),
+                pins=presentations,
+            )
+            self.pin_visibility.hide_timer.stop()
+            visible_ids = {card.id for card in cards}
+            for card_id, pin in self.pins.items():
+                if card_id not in visible_ids:
+                    pin.hide()
+            for card in cards:
+                self.show_pin(card, persist=False)
+            self.hide()
+            self.tray.setToolTip("Gaming Buddy · Focus mode")
+            self.statusBar().showMessage(
+                f"Focus mode active · {self.shortcuts['toggle_focus_mode']} to restore",
+                3000,
+            )
+        else:
+            restore = self.focus_mode.leave()
+            if restore is not None:
+                click_through = self.click_through.isChecked()
+                for card_id, pin in self.pins.items():
+                    state = restore.pins.get(card_id)
+                    pin.set_temporary_opacity(None)
+                    pin.set_click_through(click_through)
+                    if state is None or state.visible:
+                        pin.show()
+                    else:
+                        pin.hide()
+                self.pin_visibility.update_focus(self._focused_game is not None)
+                if restore.panel_was_visible:
+                    self.show_panel()
+            self.tray.setToolTip("Gaming Buddy")
+            self.statusBar().showMessage("Focus mode ended", 2500)
+        self._sync_focus_controls()
+
+    def toggle_focus_mode(self) -> None:
+        self.set_focus_mode(not self.focus_mode.active)
+
+    def _sync_focus_controls(self) -> None:
+        for control in (self.focus_button, self.focus_mode_action):
+            blocker = QSignalBlocker(control)
+            control.setChecked(self.focus_mode.active)
+            del blocker
+
     def toggle_panel(self) -> None:
+        if self.focus_mode.active:
+            self.set_focus_mode(False)
+            self.show_panel()
+            return
         if self.isVisible() and self.isActiveWindow():
             self.hide()
         else:

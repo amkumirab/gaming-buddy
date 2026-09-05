@@ -31,10 +31,12 @@ PORTABLE_SETTING_KEYS = {
     "profiles/executable_map",
     "preview/visible",
     "recognition/language",
+    "focus/opacity",
     "shortcuts/toggle_panel",
     "shortcuts/quick_finder",
     "shortcuts/capture_area",
     "shortcuts/toggle_click_through",
+    "shortcuts/toggle_focus_mode",
 }
 
 

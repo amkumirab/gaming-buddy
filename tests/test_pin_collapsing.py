@@ -105,3 +105,28 @@ def test_header_controls_toggle_collapsed_state(application: QApplication) -> No
     assert pin.card.collapsed is False
     assert collapsed_updates == [True, False]
     pin.close()
+
+
+def test_temporary_opacity_is_not_saved_as_card_layout(
+    application: QApplication,
+) -> None:
+    layouts: list[tuple[int, int]] = []
+    card = Card(
+        4,
+        CardKind.NOTE,
+        "General",
+        "Boss notes",
+        content="Wait for the second attack",
+        opacity=0.82,
+    )
+    pin = _pin(card, layouts, [])
+
+    pin.set_temporary_opacity(0.45)
+    pin.save_now()
+
+    assert pin.windowOpacity() == pytest.approx(0.45, abs=0.01)
+    assert card.opacity == pytest.approx(0.82)
+
+    pin.set_temporary_opacity(None)
+    assert pin.windowOpacity() == pytest.approx(0.82, abs=0.01)
+    pin.close()

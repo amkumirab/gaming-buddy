@@ -15,6 +15,7 @@ def test_default_shortcuts_are_valid():
         "quick_finder": "<ctrl>+<shift>+f",
         "capture_area": "<ctrl>+<shift>+s",
         "toggle_click_through": "<ctrl>+<shift>+l",
+        "toggle_focus_mode": "<ctrl>+<shift>+m",
     }
 
 

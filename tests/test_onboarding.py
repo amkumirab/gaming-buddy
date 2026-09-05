@@ -25,6 +25,7 @@ def test_onboarding_shows_current_shortcuts_and_display_guidance(
     assert DEFAULT_SHORTCUTS["capture_area"] in text
     assert DEFAULT_SHORTCUTS["toggle_panel"] in text
     assert DEFAULT_SHORTCUTS["quick_finder"] in text
+    assert DEFAULT_SHORTCUTS["toggle_focus_mode"] in text
     assert "Borderless Windowed" in text
     assert "Ctrl+V" in text
     assert "extract searchable text" in text

@@ -34,6 +34,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Extract text from screenshots locally, review it, and save it with the image card
 - Adjust overlay opacity
 - Switch pins into click-through mode
+- Enter a distraction-free focus mode with unified temporary pin opacity
 - Organize cards by game name
 - Add reusable tags such as map, boss, code, build, or puzzle to saved cards
 - Search saved cards by title, note text, extracted screenshot text, tag, or game
@@ -68,6 +69,7 @@ game window. The prototype is designed for quick interaction and stores its data
 | `Ctrl+Shift+F` | Open the quick card finder |
 | `Ctrl+Shift+S` | Capture a screen region |
 | `Ctrl+Shift+L` | Toggle click-through mode for all pins |
+| `Ctrl+Shift+M` | Enter or leave focus mode |
 
 Choose **Keyboard shortcuts…** in the control panel or tray menu to replace any default.
 Changes are saved locally and take effect immediately. Gaming Buddy prevents duplicate,
@@ -125,25 +127,28 @@ a `.sha256` file so the installer can be checked before it is run.
 9. Double-click a pinned image to inspect the lossless original at full resolution.
 10. Use **Hide all pins** to clear the screen without losing the saved workspace.
 11. Enable **Click-through pins** so mouse input goes to the game.
-12. Press `Ctrl+Shift+F`, type a clue, code, or card name, and press Enter to show it
+12. Set the Focus opacity and press `Ctrl+Shift+M` to hide the panel, show the current
+    pinned workspace, and make every visible pin click-through. Press it again to restore
+    the previous panel, visibility, opacity, and interaction state.
+13. Press `Ctrl+Shift+F`, type a clue, code, or card name, and press Enter to show it
     immediately. Saved screenshot text is included in these results.
-13. Select a card in the library to preview its image or full text. Use the preview panel to
+14. Select a card in the library to preview its image or full text. Use the preview panel to
     pin, edit, copy, or extract screenshot text without opening a context menu. Close the
     panel when you want the compact layout and reopen it with **Preview**.
-14. Open **Keyboard shortcuts…** to personalize controls without restarting.
-15. Choose **Edit** on a card to add comma-separated tags such as `map`, `boss`, or
+15. Open **Keyboard shortcuts…** to personalize controls without restarting.
+16. Choose **Edit** on a card to add comma-separated tags such as `map`, `boss`, or
     `build`. Open **Filters** to combine tag, type, pinned, favorite, and game filters.
-16. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
+17. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
     **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
-17. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
-18. Open a game, return with the panel shortcut, enter its name, and choose
+18. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
+19. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-19. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
+20. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
     Manual **Hide all pins** remains in effect when you return to the game.
-20. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+21. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
-21. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-22. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+22. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+23. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:

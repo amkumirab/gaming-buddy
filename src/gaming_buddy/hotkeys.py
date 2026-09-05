@@ -8,6 +8,7 @@ SHORTCUT_LABELS = {
     "quick_finder": "Find a saved card",
     "capture_area": "Capture screen area",
     "toggle_click_through": "Toggle click-through pins",
+    "toggle_focus_mode": "Toggle focus mode",
 }
 
 DEFAULT_SHORTCUTS = {
@@ -15,6 +16,7 @@ DEFAULT_SHORTCUTS = {
     "quick_finder": "Ctrl+Shift+F",
     "capture_area": "Ctrl+Shift+S",
     "toggle_click_through": "Ctrl+Shift+L",
+    "toggle_focus_mode": "Ctrl+Shift+M",
 }
 
 _MODIFIERS = {
@@ -120,6 +122,7 @@ class GlobalHotkeys(QObject):
     quick_finder = Signal()
     capture_area = Signal()
     toggle_click_through = Signal()
+    toggle_focus_mode = Signal()
     failed = Signal(str)
 
     def __init__(self, shortcuts: dict[str, str] | None = None) -> None:
@@ -136,6 +139,7 @@ class GlobalHotkeys(QObject):
                     hooks["quick_finder"]: self.quick_finder.emit,
                     hooks["capture_area"]: self.capture_area.emit,
                     hooks["toggle_click_through"]: self.toggle_click_through.emit,
+                    hooks["toggle_focus_mode"]: self.toggle_focus_mode.emit,
                 }
             )
             self._listener.start()
