@@ -313,6 +313,10 @@ class PinWidget(QWidget):
                 color: #ffd76d; background: #352c1c; border: 1px solid #725d2e;
                 border-radius: 5px; padding: 2px 5px; font-size: 9px; font-weight: 700;
             }
+            QLabel#pinCycle {
+                color: #ffffff; background: #5f49a8; border: 1px solid #9178e5;
+                border-radius: 5px; padding: 2px 5px; font-size: 9px; font-weight: 700;
+            }
             QPushButton#pinCollapse {
                 color: #d5caff; background: #211b31; border: 1px solid #4b3d70;
                 border-radius: 5px; font-size: 14px; font-weight: 700;
@@ -341,12 +345,17 @@ class PinWidget(QWidget):
         self._lock_indicator = QLabel("LOCKED")
         self._lock_indicator.setObjectName("pinLock")
         self._lock_indicator.setToolTip("Position and size are locked")
+        self._cycle_indicator = QLabel()
+        self._cycle_indicator.setObjectName("pinCycle")
+        self._cycle_indicator.setToolTip("Current card in the pinned-card cycle")
+        self._cycle_indicator.hide()
         self._collapse_button = QPushButton()
         self._collapse_button.setObjectName("pinCollapse")
         self._collapse_button.setFixedSize(24, 24)
         self._collapse_button.clicked.connect(self.toggle_collapsed)
         header.addWidget(title, 1)
         header.addWidget(self._lock_indicator)
+        header.addWidget(self._cycle_indicator)
         header.addWidget(game)
         header.addWidget(self._collapse_button)
         layout.addWidget(self._header)
@@ -387,6 +396,12 @@ class PinWidget(QWidget):
         self.setWindowOpacity(
             self.card.opacity if self._temporary_opacity is None else self._temporary_opacity
         )
+
+    def set_cycle_position(self, position: int | None, total: int = 0) -> None:
+        visible = position is not None and total > 0
+        self._cycle_indicator.setVisible(visible)
+        if visible:
+            self._cycle_indicator.setText(f"{position} / {total}")
 
     def contextMenuEvent(self, event: object) -> None:
         menu = QMenu(self)

@@ -64,6 +64,7 @@ from gaming_buddy.image_import import (
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.onboarding import OnboardingDialog
 from gaming_buddy.pin import PinWidget
+from gaming_buddy.pin_cycle import PinCycleState
 from gaming_buddy.pin_visibility import PinVisibilityController
 from gaming_buddy.profile_dialog import ProfileDialog
 from gaming_buddy.profiles import (
@@ -118,6 +119,7 @@ class Dashboard(QMainWindow):
         self._library_kind_filter: CardKind | None = None
         self._library_tag_filter = ""
         self.focus_mode = FocusModeState()
+        self.pin_cycle = PinCycleState()
         self._auto_hidden_pin_ids: set[int] = set()
         self.pin_visibility = PinVisibilityController(self)
         self.pin_visibility.auto_hide_requested.connect(self._hide_pins_automatically)
@@ -267,6 +269,18 @@ class Dashboard(QMainWindow):
         workspace_controls.addWidget(show_pins)
         workspace_controls.addWidget(hide_pins)
         layout.addLayout(workspace_controls)
+
+        cycle_controls = QHBoxLayout()
+        self.previous_pin_button = QPushButton("◀ Previous pin")
+        self.previous_pin_button.clicked.connect(self.show_previous_pin)
+        self.next_pin_button = QPushButton("Next pin ▶")
+        self.next_pin_button.clicked.connect(self.show_next_pin)
+        self.restore_pins_button = QPushButton("Restore pins")
+        self.restore_pins_button.clicked.connect(self.restore_pin_cycle)
+        cycle_controls.addWidget(self.previous_pin_button)
+        cycle_controls.addWidget(self.next_pin_button)
+        cycle_controls.addWidget(self.restore_pins_button)
+        layout.addLayout(cycle_controls)
 
         layout_controls = QHBoxLayout()
         collapse_pins = QPushButton("Collapse all")
@@ -432,6 +446,12 @@ class Dashboard(QMainWindow):
         self.focus_mode_action = QAction("Focus mode", menu)
         self.focus_mode_action.setCheckable(True)
         self.focus_mode_action.triggered.connect(self.set_focus_mode)
+        previous_pin_action = QAction("Previous pinned card", menu)
+        previous_pin_action.triggered.connect(self.show_previous_pin)
+        next_pin_action = QAction("Next pinned card", menu)
+        next_pin_action.triggered.connect(self.show_next_pin)
+        restore_pins_action = QAction("Restore pinned workspace", menu)
+        restore_pins_action.triggered.connect(self.restore_pin_cycle)
         collapse_pins_action = QAction("Collapse all pins", menu)
         collapse_pins_action.triggered.connect(self.collapse_all_pins)
         expand_pins_action = QAction("Expand all pins", menu)
@@ -468,6 +488,9 @@ class Dashboard(QMainWindow):
         menu.addAction(show_pins_action)
         menu.addAction(hide_pins_action)
         menu.addAction(self.focus_mode_action)
+        menu.addAction(previous_pin_action)
+        menu.addAction(next_pin_action)
+        menu.addAction(restore_pins_action)
         menu.addAction(collapse_pins_action)
         menu.addAction(expand_pins_action)
         menu.addAction(unlock_pins_action)
@@ -583,6 +606,7 @@ class Dashboard(QMainWindow):
             QMessageBox.warning(self, "Game required", "Enter the current game name first.")
             self.game_input.setFocus()
             return
+        self.restore_pin_cycle(show_message=False)
         self.profile_store.link(application.executable, game)
         self._focused_game = game
         self.pin_visibility.update_focus(True)
@@ -593,6 +617,7 @@ class Dashboard(QMainWindow):
         )
 
     def manage_profiles(self) -> None:
+        self.restore_pin_cycle(show_message=False)
         dialog = ProfileDialog(self.profile_store.all(), self)
         if not dialog.exec():
             return
@@ -632,6 +657,7 @@ class Dashboard(QMainWindow):
         self.detected_app.setToolTip(application.title or application.executable)
 
     def _switch_game_profile(self, game: str) -> None:
+        self.restore_pin_cycle(show_message=False)
         changed = self.game_input.text().strip().casefold() != game.casefold()
         if changed:
             self.game_input.setText(game)
@@ -694,6 +720,17 @@ class Dashboard(QMainWindow):
             )
         if hasattr(self, "focus_button"):
             self.focus_button.setText(f"Focus mode  ({focus_mode})")
+        if hasattr(self, "previous_pin_button"):
+            self.previous_pin_button.setToolTip(
+                f"Show only the previous pinned card ({self.shortcuts['previous_pin']})"
+            )
+            self.next_pin_button.setToolTip(
+                f"Show only the next pinned card ({self.shortcuts['next_pin']})"
+            )
+            self.restore_pins_button.setToolTip(
+                f"Leave single-pin view and restore the workspace "
+                f"({self.shortcuts['restore_pins']})"
+            )
 
     def backup_workspace(self) -> None:
         timestamp = datetime.now(UTC).astimezone().strftime("%Y%m%d")
@@ -730,6 +767,7 @@ class Dashboard(QMainWindow):
         )
 
     def restore_backup(self) -> None:
+        self.restore_pin_cycle(show_message=False)
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "Restore workspace backup",
@@ -1025,6 +1063,8 @@ class Dashboard(QMainWindow):
     def show_pin(self, card: Card, *, persist: bool = True) -> None:
         if card.id is None:
             return
+        if persist and self.pin_cycle.active:
+            self.restore_pin_cycle(show_message=False)
         if persist and not self.focus_mode.active:
             was_auto_hidden = self.pin_visibility.automatically_hidden
             self.pin_visibility.manual_show()
@@ -1086,6 +1126,9 @@ class Dashboard(QMainWindow):
             self.statusBar().showMessage(f"Restored {restored} saved pin(s)", 3000)
 
     def show_all_pins(self) -> None:
+        if self.focus_mode.active:
+            self.set_focus_mode(False)
+        self.restore_pin_cycle(show_message=False)
         self.pin_visibility.manual_show()
         self._auto_hidden_pin_ids.clear()
         cards = self.store.list(pinned_only=True)
@@ -1094,6 +1137,9 @@ class Dashboard(QMainWindow):
         self.statusBar().showMessage(f"Showing {len(cards)} saved pin(s)", 2500)
 
     def hide_all_pins(self) -> None:
+        if self.focus_mode.active:
+            self.set_focus_mode(False)
+        self.restore_pin_cycle(show_message=False)
         self.pin_visibility.manual_hide()
         self._auto_hidden_pin_ids.clear()
         for pin in self.pins.values():
@@ -1146,6 +1192,7 @@ class Dashboard(QMainWindow):
         if self.auto_profiles.isChecked() and self._focused_game:
             self._auto_hidden_pin_ids.clear()
             self._show_profile_workspace(self._focused_game)
+            self._apply_pin_cycle()
             return
         cards = {
             card.id: card for card in self.store.list(pinned_only=True) if card.id is not None
@@ -1157,12 +1204,14 @@ class Dashboard(QMainWindow):
                 self.show_pin(card, persist=False)
                 restored += 1
         self._auto_hidden_pin_ids.clear()
+        self._apply_pin_cycle()
         if restored:
             self.statusBar().showMessage(f"Restored {restored} pin(s)", 2500)
 
     def _unpin_card(self, card: Card) -> None:
         if card.id is None:
             return
+        self.restore_pin_cycle(show_message=False)
         pin = self.pins.pop(card.id, None)
         if pin is not None:
             pin.close()
@@ -1432,6 +1481,7 @@ class Dashboard(QMainWindow):
                 pin.set_locked(card.locked, notify=False)
             self._save_pin_lock(card)
         elif action is favorite_action:
+            self.restore_pin_cycle(show_message=False)
             self.store.update_favorite(card.id, not card.favorite)
             self.refresh_cards()
         elif action is pin_action:
@@ -1445,6 +1495,7 @@ class Dashboard(QMainWindow):
     def _edit_card(self, card: Card) -> None:
         if card.id is None:
             return
+        self.restore_pin_cycle(show_message=False)
         pin = self.pins.get(card.id)
         was_visible = pin.isVisible() if pin is not None else False
         if pin is not None:
@@ -1642,6 +1693,7 @@ class Dashboard(QMainWindow):
     def _delete_card(self, card: Card) -> None:
         if card.id is None:
             return
+        self.restore_pin_cycle(show_message=False)
         if not self.store.move_to_trash(card.id):
             self.statusBar().showMessage("The selected card is no longer available", 2500)
             return
@@ -1726,6 +1778,7 @@ class Dashboard(QMainWindow):
             self._sync_focus_controls()
             return
         if enabled:
+            self.restore_pin_cycle(show_message=False)
             cards = self.store.list(pinned_only=True)
             if self.auto_profiles.isChecked() and self._focused_game:
                 cards = [
@@ -1762,6 +1815,7 @@ class Dashboard(QMainWindow):
                 3000,
             )
         else:
+            self.restore_pin_cycle(show_message=False)
             restore = self.focus_mode.leave()
             if restore is not None:
                 click_through = self.click_through.isChecked()
@@ -1789,7 +1843,80 @@ class Dashboard(QMainWindow):
             control.setChecked(self.focus_mode.active)
             del blocker
 
+    def _cycle_cards(self) -> list[Card]:
+        cards = self.store.list(pinned_only=True)
+        if self._focused_game:
+            cards = [
+                card for card in cards if belongs_to_profile(card.game, self._focused_game)
+            ]
+        return cards
+
+    def show_previous_pin(self) -> None:
+        self._cycle_pin(-1)
+
+    def show_next_pin(self) -> None:
+        self._cycle_pin(1)
+
+    def _cycle_pin(self, step: int) -> None:
+        cards = self._cycle_cards()
+        card_ids = tuple(card.id for card in cards if card.id is not None)
+        if not card_ids:
+            self.statusBar().showMessage("No pinned cards are available to cycle", 2500)
+            return
+        if self.pin_cycle.active and self.pin_cycle.card_ids != card_ids:
+            self.restore_pin_cycle(show_message=False)
+        if not self.pin_cycle.active:
+            visibility = {card_id: pin.isVisible() for card_id, pin in self.pins.items()}
+            for card in cards:
+                if card.id is not None and card.id not in self.pins:
+                    visibility[card.id] = False
+                    self.show_pin(card, persist=False)
+            position = self.pin_cycle.enter(
+                card_ids,
+                visibility,
+                backwards=step < 0,
+            )
+        else:
+            position = self.pin_cycle.move(step)
+        self._apply_pin_cycle()
+        if position is not None:
+            card = next(card for card in cards if card.id == position.card_id)
+            self.statusBar().showMessage(
+                f"Pinned card {position.position} of {position.total}: "
+                f"{card.title or 'Untitled'}",
+                2500,
+            )
+
+    def _apply_pin_cycle(self) -> None:
+        position = self.pin_cycle.current
+        if position is None:
+            return
+        for card_id, pin in self.pins.items():
+            if card_id == position.card_id:
+                pin.set_cycle_position(position.position, position.total)
+                pin.show()
+                pin.raise_()
+            else:
+                pin.set_cycle_position(None)
+                pin.hide()
+
+    def restore_pin_cycle(self, _checked: bool = False, *, show_message: bool = True) -> None:
+        restore = self.pin_cycle.leave()
+        if restore is None:
+            if show_message:
+                self.statusBar().showMessage("All pinned cards are already restored", 2000)
+            return
+        for card_id, pin in self.pins.items():
+            pin.set_cycle_position(None)
+            if restore.visibility.get(card_id, True):
+                pin.show()
+            else:
+                pin.hide()
+        if show_message:
+            self.statusBar().showMessage("Pinned workspace restored", 2500)
+
     def toggle_panel(self) -> None:
+        self.restore_pin_cycle(show_message=False)
         if self.focus_mode.active:
             self.set_focus_mode(False)
             self.show_panel()

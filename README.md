@@ -41,6 +41,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Filter the library by tag, card type, pinned state, favorites, or current game
 - Preview images and notes directly from the library with quick card actions
 - Find and show any saved card from a keyboard-first in-game search overlay
+- Cycle through one pinned card at a time with favorites first and restore the prior layout
 - Mark important cards as favorites and filter the library
 - Edit saved card titles, game names, and note text without recreating them
 - Copy note text or full-resolution screenshots directly to the clipboard
@@ -70,6 +71,9 @@ game window. The prototype is designed for quick interaction and stores its data
 | `Ctrl+Shift+S` | Capture a screen region |
 | `Ctrl+Shift+L` | Toggle click-through mode for all pins |
 | `Ctrl+Shift+M` | Enter or leave focus mode |
+| `Ctrl+Shift+Left` | Show the previous pinned card |
+| `Ctrl+Shift+Right` | Show the next pinned card |
+| `Ctrl+Shift+Up` | Leave single-pin view and restore the workspace |
 
 Choose **Keyboard shortcuts…** in the control panel or tray menu to replace any default.
 Changes are saved locally and take effect immediately. Gaming Buddy prevents duplicate,
@@ -132,23 +136,26 @@ a `.sha256` file so the installer can be checked before it is run.
     the previous panel, visibility, opacity, and interaction state.
 13. Press `Ctrl+Shift+F`, type a clue, code, or card name, and press Enter to show it
     immediately. Saved screenshot text is included in these results.
-14. Select a card in the library to preview its image or full text. Use the preview panel to
+14. Press `Ctrl+Shift+Right` or `Ctrl+Shift+Left` to show one pinned card at a time. Cards
+    from the active game profile are cycled with Favorites first. Press `Ctrl+Shift+Up` to
+    restore the exact visibility that each pin had before cycling.
+15. Select a card in the library to preview its image or full text. Use the preview panel to
     pin, edit, copy, or extract screenshot text without opening a context menu. Close the
     panel when you want the compact layout and reopen it with **Preview**.
-15. Open **Keyboard shortcuts…** to personalize controls without restarting.
-16. Choose **Edit** on a card to add comma-separated tags such as `map`, `boss`, or
+16. Open **Keyboard shortcuts…** to personalize controls without restarting.
+17. Choose **Edit** on a card to add comma-separated tags such as `map`, `boss`, or
     `build`. Open **Filters** to combine tag, type, pinned, favorite, and game filters.
-17. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
+18. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
     **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
-18. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
-19. Open a game, return with the panel shortcut, enter its name, and choose
+19. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
+20. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-20. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
+21. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
     Manual **Hide all pins** remains in effect when you return to the game.
-21. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+22. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge it without deleting the current library.
-22. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-23. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+23. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+24. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -168,6 +175,8 @@ gaming-buddy/
 │   ├── capture.py      # Screen-region capture
 │   ├── card_editor.py  # Saved-card editor
 │   ├── pin.py          # Movable overlay cards
+│   ├── focus_mode.py   # Temporary distraction-free presentation state
+│   ├── pin_cycle.py    # Single-pin cycling and visibility restoration
 │   ├── profiles.py     # Active-game detection and profile mappings
 │   ├── profile_dialog.py # Profile manager
 │   ├── quick_finder.py # Keyboard-first saved-card search overlay
@@ -184,7 +193,7 @@ gaming-buddy/
 │   ├── trash_dialog.py # Recently deleted cards and permanent cleanup
 │   ├── workspace_backup.py # Verified backup and restore
 │   └── storage.py      # Local SQLite persistence
-├── tests/              # Automated storage and path tests
+├── tests/              # Automated behavior, storage, and packaging tests
 ├── packaging/          # Windows executable and installer configuration
 ├── scripts/            # Release metadata validation
 ├── .github/workflows/  # Test and tagged-release automation

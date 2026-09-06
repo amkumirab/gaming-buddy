@@ -16,6 +16,9 @@ def test_default_shortcuts_are_valid():
         "capture_area": "<ctrl>+<shift>+s",
         "toggle_click_through": "<ctrl>+<shift>+l",
         "toggle_focus_mode": "<ctrl>+<shift>+m",
+        "previous_pin": "<ctrl>+<shift>+<left>",
+        "next_pin": "<ctrl>+<shift>+<right>",
+        "restore_pins": "<ctrl>+<shift>+<up>",
     }
 
 

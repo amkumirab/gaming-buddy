@@ -130,3 +130,19 @@ def test_temporary_opacity_is_not_saved_as_card_layout(
     pin.set_temporary_opacity(None)
     assert pin.windowOpacity() == pytest.approx(0.82, abs=0.01)
     pin.close()
+
+
+def test_cycle_position_is_visible_in_collapsed_pin_header(
+    application: QApplication,
+) -> None:
+    pin = _pin(Card(5, CardKind.NOTE, "General", "Route", collapsed=True), [], [])
+
+    pin.set_cycle_position(2, 5)
+
+    assert not pin._cycle_indicator.isHidden()
+    assert pin._cycle_indicator.text() == "2 / 5"
+    assert pin._body.isHidden()
+
+    pin.set_cycle_position(None)
+    assert pin._cycle_indicator.isHidden()
+    pin.close()

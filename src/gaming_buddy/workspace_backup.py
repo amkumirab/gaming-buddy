@@ -37,6 +37,9 @@ PORTABLE_SETTING_KEYS = {
     "shortcuts/capture_area",
     "shortcuts/toggle_click_through",
     "shortcuts/toggle_focus_mode",
+    "shortcuts/previous_pin",
+    "shortcuts/next_pin",
+    "shortcuts/restore_pins",
 }
 
 

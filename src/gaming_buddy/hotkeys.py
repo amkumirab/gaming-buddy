@@ -9,6 +9,9 @@ SHORTCUT_LABELS = {
     "capture_area": "Capture screen area",
     "toggle_click_through": "Toggle click-through pins",
     "toggle_focus_mode": "Toggle focus mode",
+    "previous_pin": "Show previous pinned card",
+    "next_pin": "Show next pinned card",
+    "restore_pins": "Restore pinned workspace",
 }
 
 DEFAULT_SHORTCUTS = {
@@ -17,6 +20,9 @@ DEFAULT_SHORTCUTS = {
     "capture_area": "Ctrl+Shift+S",
     "toggle_click_through": "Ctrl+Shift+L",
     "toggle_focus_mode": "Ctrl+Shift+M",
+    "previous_pin": "Ctrl+Shift+Left",
+    "next_pin": "Ctrl+Shift+Right",
+    "restore_pins": "Ctrl+Shift+Up",
 }
 
 _MODIFIERS = {
@@ -123,6 +129,9 @@ class GlobalHotkeys(QObject):
     capture_area = Signal()
     toggle_click_through = Signal()
     toggle_focus_mode = Signal()
+    previous_pin = Signal()
+    next_pin = Signal()
+    restore_pins = Signal()
     failed = Signal(str)
 
     def __init__(self, shortcuts: dict[str, str] | None = None) -> None:
@@ -140,6 +149,9 @@ class GlobalHotkeys(QObject):
                     hooks["capture_area"]: self.capture_area.emit,
                     hooks["toggle_click_through"]: self.toggle_click_through.emit,
                     hooks["toggle_focus_mode"]: self.toggle_focus_mode.emit,
+                    hooks["previous_pin"]: self.previous_pin.emit,
+                    hooks["next_pin"]: self.next_pin.emit,
+                    hooks["restore_pins"]: self.restore_pins.emit,
                 }
             )
             self._listener.start()

@@ -33,6 +33,9 @@ def main() -> int:
     hotkeys.capture_area.connect(dashboard.start_capture)
     hotkeys.toggle_click_through.connect(dashboard.toggle_click_through)
     hotkeys.toggle_focus_mode.connect(dashboard.toggle_focus_mode)
+    hotkeys.previous_pin.connect(dashboard.show_previous_pin)
+    hotkeys.next_pin.connect(dashboard.show_next_pin)
+    hotkeys.restore_pins.connect(dashboard.restore_pin_cycle)
     hotkeys.failed.connect(
         lambda message: dashboard.statusBar().showMessage(
             f"Global shortcuts unavailable: {message}"

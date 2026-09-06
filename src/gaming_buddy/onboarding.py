@@ -82,7 +82,8 @@ class OnboardingDialog(QDialog):
                 f"{shortcuts['toggle_panel']} to open the full panel. Preview library cards, "
                 "organize them with tags and filters, or use their quick actions. Press "
                 f"{shortcuts['toggle_focus_mode']} for a distraction-free pin layout. The "
-                "tray icon keeps everything close by.",
+                f"{shortcuts['previous_pin']} and {shortcuts['next_pin']} cycle through "
+                "one pinned card at a time. The tray icon keeps everything close by.",
             )
         )
 

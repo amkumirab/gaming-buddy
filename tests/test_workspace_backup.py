@@ -28,6 +28,9 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
     source_settings.setValue("shortcuts/capture_area", "Ctrl+Alt+C")
     source_settings.setValue("shortcuts/quick_finder", "Ctrl+Alt+F")
     source_settings.setValue("shortcuts/toggle_focus_mode", "Ctrl+Alt+M")
+    source_settings.setValue("shortcuts/previous_pin", "Ctrl+Alt+Left")
+    source_settings.setValue("shortcuts/next_pin", "Ctrl+Alt+Right")
+    source_settings.setValue("shortcuts/restore_pins", "Ctrl+Alt+Up")
     source_settings.setValue("window_geometry", "not portable")
 
     image_path = tmp_path / "source-captures" / "map.png"
@@ -107,6 +110,9 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
         assert restored_settings.value("focus/opacity", type=int) == 65
         assert restored_settings.value("shortcuts/quick_finder") == "Ctrl+Alt+F"
         assert restored_settings.value("shortcuts/toggle_focus_mode") == "Ctrl+Alt+M"
+        assert restored_settings.value("shortcuts/previous_pin") == "Ctrl+Alt+Left"
+        assert restored_settings.value("shortcuts/next_pin") == "Ctrl+Alt+Right"
+        assert restored_settings.value("shortcuts/restore_pins") == "Ctrl+Alt+Up"
         assert restored_settings.value("window_geometry") is None
 
         assert restored_store.update_tags(restored_image.id, ("local",))
