@@ -71,7 +71,8 @@ class OnboardingDialog(QDialog):
                 "Read, mark up, and pin it",
                 "Right-click an image to extract searchable text or add arrows, text, and "
                 "highlights. Then move and resize its pin, snap it to a screen edge, and lock "
-                "the layout. Collapse pins or enable click-through when you need a clear view.",
+                "the layout. Save named layouts for each game, or collapse pins and enable "
+                "click-through when you need a clear view.",
             )
         )
         layout.addWidget(

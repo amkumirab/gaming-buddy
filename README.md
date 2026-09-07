@@ -42,6 +42,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Preview images and notes directly from the library with quick card actions
 - Find and show any saved card from a keyboard-first in-game search overlay
 - Cycle through one pinned card at a time with favorites first and restore the prior layout
+- Save multiple named pin layouts per game and switch between them without moving cards again
 - Mark important cards as favorites and filter the library
 - Edit saved card titles, game names, and note text without recreating them
 - Copy note text or full-resolution screenshots directly to the clipboard
@@ -152,10 +153,13 @@ a `.sha256` file so the installer can be checked before it is run.
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
 21. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
     Manual **Hide all pins** remains in effect when you return to the game.
-22. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
-    and merge it without deleting the current library.
-23. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-24. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+22. Choose **Layouts…** to save the current pins, positions, sizes, visibility, opacity,
+    collapsed state, and lock state as a named layout for the current game. Applying a layout
+    reuses the existing cards, and the active layout returns with that game profile.
+23. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+    and merge cards, images, settings, and named layouts without deleting the current library.
+24. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+25. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -177,6 +181,8 @@ gaming-buddy/
 │   ├── pin.py          # Movable overlay cards
 │   ├── focus_mode.py   # Temporary distraction-free presentation state
 │   ├── pin_cycle.py    # Single-pin cycling and visibility restoration
+│   ├── workspace_presets.py # Named per-game pin layouts
+│   ├── preset_dialog.py # Layout save, apply, rename, and delete controls
 │   ├── profiles.py     # Active-game detection and profile mappings
 │   ├── profile_dialog.py # Profile manager
 │   ├── quick_finder.py # Keyboard-first saved-card search overlay
@@ -221,6 +227,8 @@ gaming-buddy/
 - Backup ZIP files are not encrypted, so they should be stored in a trusted location.
 - Pin lock state is stored locally with the rest of each card's workspace layout.
 - Pin collapsed state and expanded size are stored locally and included in workspace backups.
+- Named workspace layouts are stored locally in SQLite and included in version 2 backups.
+- Backups created by earlier versions remain restorable.
 - Saved cards and captured images can be removed by deleting `%LOCALAPPDATA%\GamingBuddy`.
 
 ## Compatibility and fair-play note

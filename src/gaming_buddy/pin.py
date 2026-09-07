@@ -569,6 +569,9 @@ class PinWidget(QWidget):
         self._save_timer.stop()
         self._save_layout()
 
+    def discard_pending_layout(self) -> None:
+        self._save_timer.stop()
+
     def _save_layout(self) -> None:
         geometry = self.geometry()
         self.card.x = geometry.x()

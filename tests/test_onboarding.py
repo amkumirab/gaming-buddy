@@ -32,6 +32,7 @@ def test_onboarding_shows_current_shortcuts_and_display_guidance(
     assert "Ctrl+V" in text
     assert "extract searchable text" in text
     assert "tags and filters" in text
+    assert "Save named layouts" in text
     assert dialog.launch_at_sign_in is False
 
     dialog.launch_checkbox.setChecked(True)

@@ -16,9 +16,11 @@ from PySide6.QtCore import QSettings
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.storage import CardStore
 from gaming_buddy.tags import normalize_tags
+from gaming_buddy.workspace_presets import PresetPinLayout, WorkspacePreset
 
 BACKUP_FORMAT = "gaming-buddy-workspace"
-BACKUP_VERSION = 1
+BACKUP_VERSION = 2
+SUPPORTED_BACKUP_VERSIONS = {1, BACKUP_VERSION}
 MAX_ARCHIVE_FILES = 10_000
 MAX_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_JSON_BYTES = 20 * 1024 * 1024
@@ -54,6 +56,7 @@ class BackupSummary:
     image_count: int
     missing_image_count: int
     settings_count: int
+    preset_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +65,7 @@ class RestoreResult:
     duplicate_cards: int
     skipped_cards: int
     restored_settings: int
+    restored_presets: int
 
 
 def create_workspace_backup(
@@ -72,6 +76,7 @@ def create_workspace_backup(
     destination = destination.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     cards = store.list()
+    presets = store.all_workspace_presets()
     records: list[dict[str, Any]] = []
     image_sources: dict[str, Path] = {}
     missing_images = 0
@@ -93,9 +98,11 @@ def create_workspace_backup(
     portable_settings = _portable_settings(settings)
     cards_bytes = _json_bytes(records)
     settings_bytes = _json_bytes(portable_settings)
+    presets_bytes = _json_bytes([_preset_to_record(preset) for preset in presets])
     checksums = {
         "cards.json": _sha256_bytes(cards_bytes),
         "settings.json": _sha256_bytes(settings_bytes),
+        "presets.json": _sha256_bytes(presets_bytes),
     }
     for archive_name, source in image_sources.items():
         checksums[archive_name] = _sha256_file(source)
@@ -107,6 +114,7 @@ def create_workspace_backup(
         image_count=len(image_sources),
         missing_image_count=missing_images,
         settings_count=len(portable_settings),
+        preset_count=len(presets),
     )
     manifest = {
         "format": BACKUP_FORMAT,
@@ -116,6 +124,7 @@ def create_workspace_backup(
         "image_count": summary.image_count,
         "missing_image_count": summary.missing_image_count,
         "settings_count": summary.settings_count,
+        "preset_count": summary.preset_count,
         "checksums": checksums,
     }
 
@@ -131,6 +140,7 @@ def create_workspace_backup(
             archive.writestr("manifest.json", _json_bytes(manifest))
             archive.writestr("cards.json", cards_bytes)
             archive.writestr("settings.json", settings_bytes)
+            archive.writestr("presets.json", presets_bytes)
             for archive_name, source in image_sources.items():
                 archive.write(source, archive_name)
         os.replace(temporary, destination)
@@ -141,13 +151,14 @@ def create_workspace_backup(
 
 
 def inspect_workspace_backup(source: Path) -> BackupSummary:
-    manifest, _, _ = _read_and_verify(source)
+    manifest, _, _, presets = _read_and_verify(source)
     return BackupSummary(
         created_at=str(manifest["created_at"]),
         card_count=int(manifest["card_count"]),
         image_count=int(manifest["image_count"]),
         missing_image_count=int(manifest.get("missing_image_count", 0)),
         settings_count=int(manifest["settings_count"]),
+        preset_count=len(presets),
     )
 
 
@@ -157,12 +168,13 @@ def restore_workspace_backup(
     captures_dir: Path,
     settings: QSettings,
 ) -> RestoreResult:
-    _, records, portable_settings = _read_and_verify(source)
+    _, records, portable_settings, preset_records = _read_and_verify(source)
     captures_dir.mkdir(parents=True, exist_ok=True)
     existing_cards = {_card_identity(card): card for card in store.list()}
     imported = 0
     duplicates = 0
     skipped = 0
+    source_card_ids: dict[int, int] = {}
 
     with ZipFile(source, "r") as archive:
         for record in records:
@@ -193,6 +205,7 @@ def restore_workspace_backup(
                     store.update_tags(existing.id, merged_tags)
                     existing.tags = merged_tags
                 duplicates += 1
+                _map_source_card_id(record, existing.id, source_card_ids)
                 continue
 
             if image_bytes is not None:
@@ -208,6 +221,30 @@ def restore_workspace_backup(
             store.add(card)
             existing_cards[identity] = card
             imported += 1
+            _map_source_card_id(record, card.id, source_card_ids)
+
+    restored_presets = 0
+    active_presets: list[int] = []
+    for record in preset_records:
+        try:
+            game = str(record["game"]).strip() or "General"
+            name = str(record["name"])
+            raw_pins = record["pins"]
+            if not isinstance(raw_pins, list):
+                raise TypeError
+            pins = tuple(
+                _preset_pin_from_record(pin, source_card_ids)
+                for pin in raw_pins
+                if isinstance(pin, dict) and int(pin.get("card_id", 0)) in source_card_ids
+            )
+            preset = store.save_workspace_preset(game, name, pins, activate=False)
+        except (KeyError, TypeError, ValueError):
+            continue
+        restored_presets += 1
+        if bool(record.get("active", False)):
+            active_presets.append(preset.id)
+    for preset_id in active_presets:
+        store.activate_workspace_preset(preset_id)
 
     restored_settings = 0
     for key, value in portable_settings.items():
@@ -215,12 +252,23 @@ def restore_workspace_backup(
             settings.setValue(key, value)
             restored_settings += 1
     settings.sync()
-    return RestoreResult(imported, duplicates, skipped, restored_settings)
+    return RestoreResult(
+        imported,
+        duplicates,
+        skipped,
+        restored_settings,
+        restored_presets,
+    )
 
 
 def _read_and_verify(
     source: Path,
-) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[
+    dict[str, Any],
+    list[dict[str, Any]],
+    dict[str, Any],
+    list[dict[str, Any]],
+]:
     try:
         with ZipFile(source, "r") as archive:
             infos = archive.infolist()
@@ -230,7 +278,8 @@ def _read_and_verify(
                 raise BackupError("The backup manifest is invalid.")
             if manifest.get("format") != BACKUP_FORMAT:
                 raise BackupError("This is not a Gaming Buddy workspace backup.")
-            if manifest.get("version") != BACKUP_VERSION:
+            version = manifest.get("version")
+            if version not in SUPPORTED_BACKUP_VERSIONS:
                 raise BackupError("This backup version is not supported.")
             checksums = manifest.get("checksums")
             if not isinstance(checksums, dict):
@@ -246,6 +295,9 @@ def _read_and_verify(
                     raise BackupError(f"Backup integrity check failed for {name}.")
             records = _read_json(archive, "cards.json")
             portable_settings = _read_json(archive, "settings.json")
+            preset_records = (
+                _read_json(archive, "presets.json") if version >= 2 else []
+            )
     except (OSError, BadZipFile, KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise BackupError(f"Could not read the backup: {exc}") from exc
 
@@ -253,6 +305,10 @@ def _read_and_verify(
         raise BackupError("The card list in this backup is invalid.")
     if not isinstance(portable_settings, dict):
         raise BackupError("The settings in this backup are invalid.")
+    if not isinstance(preset_records, list) or not all(
+        isinstance(record, dict) for record in preset_records
+    ):
+        raise BackupError("The workspace layout list in this backup is invalid.")
     if any(
         not isinstance(key, str)
         or not _is_portable_setting(key)
@@ -265,16 +321,19 @@ def _read_and_verify(
         image_count = int(manifest.get("image_count", -1))
         missing_image_count = int(manifest.get("missing_image_count", -1))
         settings_count = int(manifest.get("settings_count", -1))
+        preset_count = int(manifest.get("preset_count", 0 if version == 1 else -1))
     except (TypeError, ValueError) as exc:
         raise BackupError("The backup manifest contains invalid counts.") from exc
     if not isinstance(manifest.get("created_at"), str) or not manifest["created_at"]:
         raise BackupError("The backup creation date is missing.")
-    if min(card_count, image_count, missing_image_count, settings_count) < 0:
+    if min(card_count, image_count, missing_image_count, settings_count, preset_count) < 0:
         raise BackupError("The backup manifest contains negative counts.")
     if card_count != len(records):
         raise BackupError("The backup card count does not match its manifest.")
     if settings_count != len(portable_settings):
         raise BackupError("The backup settings count does not match its manifest.")
+    if preset_count != len(preset_records):
+        raise BackupError("The workspace layout count does not match its manifest.")
     archive_images = {name for name in checksums if name.startswith("captures/")}
     if image_count != len(archive_images):
         raise BackupError("The backup image count does not match its manifest.")
@@ -291,7 +350,7 @@ def _read_and_verify(
     )
     if missing_image_count != missing_records:
         raise BackupError("The missing-image count does not match the backup contents.")
-    return manifest, records, portable_settings
+    return manifest, records, portable_settings, preset_records
 
 
 def _validate_archive_members(infos: list[ZipInfo]) -> None:
@@ -343,6 +402,7 @@ def _is_portable_setting(key: str) -> bool:
 
 def _card_to_record(card: Card, image_archive: str) -> dict[str, Any]:
     return {
+        "source_id": card.id,
         "kind": card.kind.value,
         "game": card.game,
         "title": card.title,
@@ -361,6 +421,61 @@ def _card_to_record(card: Card, image_archive: str) -> dict[str, Any]:
         "created_at": card.created_at,
         "updated_at": card.updated_at,
     }
+
+
+def _preset_to_record(preset: WorkspacePreset) -> dict[str, Any]:
+    return {
+        "game": preset.game,
+        "name": preset.name,
+        "active": preset.active,
+        "pins": [
+            {
+                "card_id": pin.card_id,
+                "visible": pin.visible,
+                "x": pin.x,
+                "y": pin.y,
+                "width": pin.width,
+                "height": pin.height,
+                "opacity": pin.opacity,
+                "locked": pin.locked,
+                "collapsed": pin.collapsed,
+            }
+            for pin in preset.pins
+        ],
+    }
+
+
+def _map_source_card_id(
+    record: dict[str, Any],
+    destination_id: int | None,
+    mapping: dict[int, int],
+) -> None:
+    if destination_id is None or "source_id" not in record:
+        return
+    try:
+        source_id = int(record["source_id"])
+    except (TypeError, ValueError):
+        return
+    if source_id > 0:
+        mapping[source_id] = destination_id
+
+
+def _preset_pin_from_record(
+    record: dict[str, Any],
+    source_card_ids: dict[int, int],
+) -> PresetPinLayout:
+    source_id = int(record["card_id"])
+    return PresetPinLayout(
+        card_id=source_card_ids[source_id],
+        visible=bool(record.get("visible", True)),
+        x=int(record.get("x", 80)),
+        y=int(record.get("y", 80)),
+        width=int(record.get("width", 320)),
+        height=int(record.get("height", 220)),
+        opacity=float(record.get("opacity", 0.88)),
+        locked=bool(record.get("locked", False)),
+        collapsed=bool(record.get("collapsed", False)),
+    )
 
 
 def _record_to_card(record: dict[str, Any]) -> tuple[Card, str]:

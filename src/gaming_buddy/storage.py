@@ -7,6 +7,12 @@ from typing import Self
 
 from gaming_buddy.models import Card, CardKind, utc_now
 from gaming_buddy.tags import normalize_tags
+from gaming_buddy.workspace_presets import (
+    PresetPinLayout,
+    WorkspacePreset,
+    WorkspacePresetSummary,
+    normalize_preset_name,
+)
 
 
 class CardStore:
@@ -78,6 +84,43 @@ class CardStore:
         )
         self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_card_tags_tag ON card_tags(tag COLLATE NOCASE)"
+        )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workspace_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                game TEXT NOT NULL COLLATE NOCASE,
+                name TEXT NOT NULL COLLATE NOCASE,
+                active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (game, name)
+            )
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workspace_preset_pins (
+                preset_id INTEGER NOT NULL
+                    REFERENCES workspace_presets(id) ON DELETE CASCADE,
+                card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+                visible INTEGER NOT NULL DEFAULT 1,
+                x INTEGER NOT NULL,
+                y INTEGER NOT NULL,
+                width INTEGER NOT NULL,
+                height INTEGER NOT NULL,
+                opacity REAL NOT NULL,
+                locked INTEGER NOT NULL DEFAULT 0,
+                collapsed INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (preset_id, card_id)
+            )
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_presets_active_game
+            ON workspace_presets(game COLLATE NOCASE) WHERE active = 1
+            """
         )
         self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_cards_game_updated ON cards(game, updated_at DESC)"
@@ -338,6 +381,264 @@ class CardStore:
             self._replace_tags(card_id, tags)
         self._connection.commit()
         return cursor.rowcount > 0
+
+    def save_workspace_preset(
+        self,
+        game: str,
+        name: str,
+        pins: Sequence[PresetPinLayout],
+        *,
+        activate: bool = True,
+    ) -> WorkspacePreset:
+        game = game.strip() or "General"
+        name = normalize_preset_name(name)
+        now = utc_now()
+        with self._connection:
+            if activate:
+                self._connection.execute(
+                    "UPDATE workspace_presets SET active = 0 WHERE game = ? COLLATE NOCASE",
+                    (game,),
+                )
+                conflict_update = "active = 1, updated_at = excluded.updated_at"
+            else:
+                conflict_update = "updated_at = excluded.updated_at"
+            self._connection.execute(
+                f"""
+                INSERT INTO workspace_presets (
+                    game, name, active, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(game, name) DO UPDATE SET {conflict_update}
+                """,
+                (game, name, int(activate), now, now),
+            )
+            row = self._connection.execute(
+                """
+                SELECT id FROM workspace_presets
+                WHERE game = ? COLLATE NOCASE AND name = ? COLLATE NOCASE
+                """,
+                (game, name),
+            ).fetchone()
+            preset_id = int(row["id"])
+            self._connection.execute(
+                "DELETE FROM workspace_preset_pins WHERE preset_id = ?",
+                (preset_id,),
+            )
+            self._connection.executemany(
+                """
+                INSERT INTO workspace_preset_pins (
+                    preset_id, card_id, visible, x, y, width, height,
+                    opacity, locked, collapsed
+                )
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                WHERE EXISTS (
+                    SELECT 1 FROM cards WHERE id = ? AND deleted_at = ''
+                )
+                """,
+                (
+                    (
+                        preset_id,
+                        pin.card_id,
+                        int(pin.visible),
+                        pin.x,
+                        pin.y,
+                        max(160, pin.width),
+                        max(100, pin.height),
+                        min(1.0, max(0.2, pin.opacity)),
+                        int(pin.locked),
+                        int(pin.collapsed),
+                        pin.card_id,
+                    )
+                    for pin in pins
+                ),
+            )
+        preset = self.get_workspace_preset(preset_id)
+        if preset is None:  # pragma: no cover - guarded by the transaction above
+            raise RuntimeError("The saved layout could not be loaded.")
+        return preset
+
+    def list_workspace_presets(self, game: str) -> list[WorkspacePresetSummary]:
+        rows = self._connection.execute(
+            """
+            SELECT
+                workspace_presets.*,
+                COUNT(cards.id) AS pin_count
+            FROM workspace_presets
+            LEFT JOIN workspace_preset_pins
+                ON workspace_preset_pins.preset_id = workspace_presets.id
+            LEFT JOIN cards
+                ON cards.id = workspace_preset_pins.card_id
+                AND cards.deleted_at = ''
+            WHERE workspace_presets.game = ? COLLATE NOCASE
+            GROUP BY workspace_presets.id
+            ORDER BY workspace_presets.active DESC,
+                     workspace_presets.name COLLATE NOCASE
+            """,
+            (game.strip() or "General",),
+        ).fetchall()
+        return [self._row_to_workspace_preset_summary(row) for row in rows]
+
+    def all_workspace_presets(self) -> list[WorkspacePreset]:
+        rows = self._connection.execute(
+            "SELECT id FROM workspace_presets ORDER BY game COLLATE NOCASE, name COLLATE NOCASE"
+        ).fetchall()
+        return [
+            preset
+            for row in rows
+            if (preset := self.get_workspace_preset(int(row["id"]))) is not None
+        ]
+
+    def get_workspace_preset(self, preset_id: int) -> WorkspacePreset | None:
+        row = self._connection.execute(
+            "SELECT * FROM workspace_presets WHERE id = ?",
+            (preset_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        pin_rows = self._connection.execute(
+            """
+            SELECT workspace_preset_pins.*
+            FROM workspace_preset_pins
+            JOIN cards ON cards.id = workspace_preset_pins.card_id
+            WHERE workspace_preset_pins.preset_id = ? AND cards.deleted_at = ''
+            ORDER BY workspace_preset_pins.card_id
+            """,
+            (preset_id,),
+        ).fetchall()
+        return WorkspacePreset(
+            id=int(row["id"]),
+            game=str(row["game"]),
+            name=str(row["name"]),
+            pins=tuple(self._row_to_preset_pin(pin_row) for pin_row in pin_rows),
+            active=bool(row["active"]),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    def active_workspace_preset(self, game: str) -> WorkspacePreset | None:
+        row = self._connection.execute(
+            """
+            SELECT id FROM workspace_presets
+            WHERE game = ? COLLATE NOCASE AND active = 1
+            """,
+            (game.strip() or "General",),
+        ).fetchone()
+        return self.get_workspace_preset(int(row["id"])) if row is not None else None
+
+    def workspace_preset_named(self, game: str, name: str) -> WorkspacePreset | None:
+        try:
+            name = normalize_preset_name(name)
+        except ValueError:
+            return None
+        row = self._connection.execute(
+            """
+            SELECT id FROM workspace_presets
+            WHERE game = ? COLLATE NOCASE AND name = ? COLLATE NOCASE
+            """,
+            (game.strip() or "General", name),
+        ).fetchone()
+        return self.get_workspace_preset(int(row["id"])) if row is not None else None
+
+    def rename_workspace_preset(self, preset_id: int, name: str) -> bool:
+        name = normalize_preset_name(name)
+        try:
+            cursor = self._connection.execute(
+                "UPDATE workspace_presets SET name = ?, updated_at = ? WHERE id = ?",
+                (name, utc_now(), preset_id),
+            )
+            self._connection.commit()
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("A layout with that name already exists for this game.") from exc
+        return cursor.rowcount > 0
+
+    def delete_workspace_preset(self, preset_id: int) -> bool:
+        cursor = self._connection.execute(
+            "DELETE FROM workspace_presets WHERE id = ?",
+            (preset_id,),
+        )
+        self._connection.commit()
+        return cursor.rowcount > 0
+
+    def activate_workspace_preset(self, preset_id: int) -> bool:
+        row = self._connection.execute(
+            "SELECT game FROM workspace_presets WHERE id = ?",
+            (preset_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        with self._connection:
+            self._connection.execute(
+                "UPDATE workspace_presets SET active = 0 WHERE game = ? COLLATE NOCASE",
+                (str(row["game"]),),
+            )
+            cursor = self._connection.execute(
+                "UPDATE workspace_presets SET active = 1 WHERE id = ?",
+                (preset_id,),
+            )
+        return cursor.rowcount > 0
+
+    def apply_workspace_preset(self, preset_id: int) -> WorkspacePreset | None:
+        preset = self.get_workspace_preset(preset_id)
+        if preset is None:
+            return None
+        now = utc_now()
+        with self._connection:
+            self._connection.execute(
+                "UPDATE workspace_presets SET active = 0 WHERE game = ? COLLATE NOCASE",
+                (preset.game,),
+            )
+            self._connection.execute(
+                "UPDATE workspace_presets SET active = 1, updated_at = ? WHERE id = ?",
+                (now, preset.id),
+            )
+            self._connection.executemany(
+                """
+                UPDATE cards SET
+                    pinned = 1, x = ?, y = ?, width = ?, height = ?, opacity = ?,
+                    locked = ?, collapsed = ?, updated_at = ?
+                WHERE id = ? AND deleted_at = ''
+                """,
+                (
+                    (
+                        pin.x,
+                        pin.y,
+                        max(160, pin.width),
+                        max(100, pin.height),
+                        min(1.0, max(0.2, pin.opacity)),
+                        int(pin.locked),
+                        int(pin.collapsed),
+                        now,
+                        pin.card_id,
+                    )
+                    for pin in preset.pins
+                ),
+            )
+        return self.get_workspace_preset(preset.id)
+
+    @staticmethod
+    def _row_to_workspace_preset_summary(row: sqlite3.Row) -> WorkspacePresetSummary:
+        return WorkspacePresetSummary(
+            id=int(row["id"]),
+            game=str(row["game"]),
+            name=str(row["name"]),
+            pin_count=int(row["pin_count"]),
+            active=bool(row["active"]),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _row_to_preset_pin(row: sqlite3.Row) -> PresetPinLayout:
+        return PresetPinLayout(
+            card_id=int(row["card_id"]),
+            visible=bool(row["visible"]),
+            x=int(row["x"]),
+            y=int(row["y"]),
+            width=int(row["width"]),
+            height=int(row["height"]),
+            opacity=float(row["opacity"]),
+            locked=bool(row["locked"]),
+            collapsed=bool(row["collapsed"]),
+        )
 
     def update_tags(self, card_id: int, tags: Sequence[str]) -> bool:
         row = self._connection.execute(

@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -66,6 +67,7 @@ from gaming_buddy.onboarding import OnboardingDialog
 from gaming_buddy.pin import PinWidget
 from gaming_buddy.pin_cycle import PinCycleState
 from gaming_buddy.pin_visibility import PinVisibilityController
+from gaming_buddy.preset_dialog import PresetAction, WorkspacePresetDialog
 from gaming_buddy.profile_dialog import ProfileDialog
 from gaming_buddy.profiles import (
     ActiveApplication,
@@ -91,6 +93,7 @@ from gaming_buddy.workspace_backup import (
     inspect_workspace_backup,
     restore_workspace_backup,
 )
+from gaming_buddy.workspace_presets import PresetPinLayout, WorkspacePreset
 
 
 class Dashboard(QMainWindow):
@@ -289,9 +292,12 @@ class Dashboard(QMainWindow):
         expand_pins.clicked.connect(self.expand_all_pins)
         unlock_pins = QPushButton("Unlock all")
         unlock_pins.clicked.connect(self.unlock_all_pins)
+        layouts_button = QPushButton("Layouts…")
+        layouts_button.clicked.connect(self.manage_workspace_presets)
         layout_controls.addWidget(collapse_pins)
         layout_controls.addWidget(expand_pins)
         layout_controls.addWidget(unlock_pins)
+        layout_controls.addWidget(layouts_button)
         layout.addLayout(layout_controls)
 
         tools = QHBoxLayout()
@@ -465,6 +471,8 @@ class Dashboard(QMainWindow):
         shortcuts_action.triggered.connect(self.edit_shortcuts)
         profiles_action = QAction("Game profiles…", menu)
         profiles_action.triggered.connect(self.manage_profiles)
+        layouts_action = QAction("Workspace layouts…", menu)
+        layouts_action.triggered.connect(self.manage_workspace_presets)
         backup_action = QAction("Backup workspace…", menu)
         backup_action.triggered.connect(self.backup_workspace)
         restore_action = QAction("Restore backup…", menu)
@@ -497,6 +505,7 @@ class Dashboard(QMainWindow):
         menu.addAction(self.auto_hide_pins_action)
         menu.addSeparator()
         menu.addAction(profiles_action)
+        menu.addAction(layouts_action)
         menu.addAction(shortcuts_action)
         menu.addSeparator()
         menu.addAction(backup_action)
@@ -661,7 +670,15 @@ class Dashboard(QMainWindow):
         changed = self.game_input.text().strip().casefold() != game.casefold()
         if changed:
             self.game_input.setText(game)
-        self._show_profile_workspace(game)
+        active_preset = self.store.active_workspace_preset(game)
+        if active_preset is not None:
+            self._apply_workspace_preset(
+                active_preset.id,
+                announce=False,
+                user_initiated=False,
+            )
+        else:
+            self._show_profile_workspace(game)
         if changed:
             self.statusBar().showMessage(f"Switched to {game} profile", 3000)
 
@@ -672,6 +689,10 @@ class Dashboard(QMainWindow):
         ):
             for pin in self.pins.values():
                 pin.hide()
+            return
+        active_preset = self.store.active_workspace_preset(game)
+        if active_preset is not None:
+            self._display_workspace_preset(active_preset)
             return
         for card in self.store.list(pinned_only=True):
             visible = belongs_to_profile(card.game, game)
@@ -763,7 +784,7 @@ class Dashboard(QMainWindow):
             self,
             "Backup complete",
             f"Saved {summary.card_count} cards and {summary.image_count} images to:\n"
-            f"{destination}{missing}",
+            f"{destination}\nWorkspace layouts: {summary.preset_count}{missing}",
         )
 
     def restore_backup(self) -> None:
@@ -787,7 +808,8 @@ class Dashboard(QMainWindow):
             "Restore workspace backup",
             f"Backup created: {summary.created_at}\n"
             f"Cards: {summary.card_count}\n"
-            f"Images: {summary.image_count}\n\n"
+            f"Images: {summary.image_count}\n"
+            f"Workspace layouts: {summary.preset_count}\n\n"
             "Cards will be merged with the current library and exact duplicates will be skipped. "
             "Current cards and images will not be deleted. Matching portable settings will be "
             "updated.",
@@ -824,7 +846,8 @@ class Dashboard(QMainWindow):
             f"Imported cards: {result.imported_cards}\n"
             f"Duplicates skipped: {result.duplicate_cards}\n"
             f"Unavailable cards skipped: {result.skipped_cards}\n"
-            f"Settings restored: {result.restored_settings}",
+            f"Settings restored: {result.restored_settings}\n"
+            f"Workspace layouts restored: {result.restored_presets}",
         )
 
     def _reload_restored_settings(self) -> None:
@@ -1122,6 +1145,14 @@ class Dashboard(QMainWindow):
         for card in self.store.list(pinned_only=True):
             self.show_pin(card, persist=False)
             restored += 1
+        game = self.game_input.text().strip() or "General"
+        active_preset = self.store.active_workspace_preset(game)
+        if active_preset is not None:
+            self._apply_workspace_preset(
+                active_preset.id,
+                announce=False,
+                user_initiated=False,
+            )
         if restored:
             self.statusBar().showMessage(f"Restored {restored} saved pin(s)", 3000)
 
@@ -1232,6 +1263,185 @@ class Dashboard(QMainWindow):
             height=card.height,
             opacity=card.opacity,
         )
+
+    def _current_workspace_game(self) -> str:
+        return self._focused_game or self.game_input.text().strip() or "General"
+
+    def manage_workspace_presets(self, _checked: bool = False) -> None:
+        self.restore_pin_cycle(show_message=False)
+        if self.focus_mode.active:
+            self.set_focus_mode(False)
+        game = self._current_workspace_game()
+        while True:
+            dialog = WorkspacePresetDialog(
+                game,
+                self.store.list_workspace_presets(game),
+                self,
+            )
+            if not dialog.exec() or dialog.action is None:
+                return
+            preset_id = dialog.selected_preset_id
+            if dialog.action is PresetAction.SAVE:
+                self._save_current_workspace_preset(game)
+                return
+            if preset_id is None:
+                return
+            if dialog.action is PresetAction.APPLY:
+                self._apply_workspace_preset(preset_id)
+                return
+            if dialog.action is PresetAction.RENAME:
+                self._rename_workspace_preset(preset_id)
+                continue
+            if dialog.action is PresetAction.DELETE:
+                self._delete_workspace_preset(preset_id)
+
+    def _capture_workspace_pins(self, game: str) -> tuple[PresetPinLayout, ...]:
+        relevant_ids: set[int] = set()
+        for card in self.store.list(pinned_only=True):
+            if card.id is not None and belongs_to_profile(card.game, game):
+                relevant_ids.add(card.id)
+                pin = self.pins.get(card.id)
+                if pin is not None:
+                    pin.save_now()
+
+        cards = {
+            card.id: card
+            for card in self.store.list(pinned_only=True)
+            if card.id in relevant_ids
+        }
+        return tuple(
+            PresetPinLayout(
+                card_id=card_id,
+                visible=(pin := self.pins.get(card_id)) is not None and pin.isVisible(),
+                x=card.x,
+                y=card.y,
+                width=card.width,
+                height=card.height,
+                opacity=card.opacity,
+                locked=card.locked,
+                collapsed=card.collapsed,
+            )
+            for card_id, card in cards.items()
+        )
+
+    def _save_current_workspace_preset(self, game: str) -> None:
+        pins = self._capture_workspace_pins(game)
+        if not pins:
+            QMessageBox.information(
+                self,
+                "No pinned cards",
+                f"Pin at least one card for {game} before saving a layout.",
+            )
+            return
+        name, accepted = QInputDialog.getText(
+            self,
+            "Save workspace layout",
+            f"Name this {game} layout:",
+        )
+        if not accepted:
+            return
+        existing = self.store.workspace_preset_named(game, name)
+        if existing is not None:
+            answer = QMessageBox.question(
+                self,
+                "Replace workspace layout?",
+                f"A layout named “{existing.name}” already exists for {game}. Replace it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            preset = self.store.save_workspace_preset(game, name, pins)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid layout name", str(exc))
+            return
+        self.statusBar().showMessage(
+            f"Saved {preset.name} with {len(preset.pins)} pin(s)",
+            3000,
+        )
+
+    def _rename_workspace_preset(self, preset_id: int) -> None:
+        preset = self.store.get_workspace_preset(preset_id)
+        if preset is None:
+            return
+        name, accepted = QInputDialog.getText(
+            self,
+            "Rename workspace layout",
+            "New layout name:",
+            text=preset.name,
+        )
+        if not accepted:
+            return
+        try:
+            renamed = self.store.rename_workspace_preset(preset.id, name)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Could not rename layout", str(exc))
+            return
+        if renamed:
+            self.statusBar().showMessage("Workspace layout renamed", 2500)
+
+    def _delete_workspace_preset(self, preset_id: int) -> None:
+        preset = self.store.get_workspace_preset(preset_id)
+        if preset is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Delete workspace layout?",
+            f"Delete “{preset.name}” from {preset.game}? Your cards will not be deleted.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if self.store.delete_workspace_preset(preset.id):
+            if preset.active:
+                self._show_profile_workspace(preset.game)
+            self.statusBar().showMessage("Workspace layout deleted", 2500)
+
+    def _apply_workspace_preset(
+        self,
+        preset_id: int,
+        *,
+        announce: bool = True,
+        user_initiated: bool = True,
+    ) -> None:
+        self.restore_pin_cycle(show_message=False)
+        if user_initiated and self.focus_mode.active:
+            self.set_focus_mode(False)
+        preset = self.store.apply_workspace_preset(preset_id)
+        if preset is None:
+            if announce:
+                QMessageBox.warning(
+                    self,
+                    "Layout unavailable",
+                    "The selected workspace layout no longer exists.",
+                )
+            return
+        self._display_workspace_preset(preset)
+        self.refresh_cards()
+        if announce:
+            self.statusBar().showMessage(
+                f"Applied {preset.name} · {len(preset.pins)} pin(s)",
+                3000,
+            )
+
+    def _display_workspace_preset(self, preset: WorkspacePreset) -> None:
+        self.pin_visibility.manual_show()
+        self._auto_hidden_pin_ids.clear()
+        for card_id, pin in tuple(self.pins.items()):
+            if belongs_to_profile(pin.card.game, preset.game):
+                pin.discard_pending_layout()
+                pin.close()
+                pin.deleteLater()
+                self.pins.pop(card_id, None)
+        for layout in preset.pins:
+            card = self.store.get(layout.card_id)
+            if card is None:
+                continue
+            self.show_pin(card, persist=False)
+            if not layout.visible:
+                self.pins[layout.card_id].hide()
 
     def _save_pin_lock(self, card: Card) -> None:
         if card.id is None:
@@ -1781,11 +1991,7 @@ class Dashboard(QMainWindow):
             self.restore_pin_cycle(show_message=False)
             cards = self.store.list(pinned_only=True)
             if self.auto_profiles.isChecked() and self._focused_game:
-                cards = [
-                    card
-                    for card in cards
-                    if belongs_to_profile(card.game, self._focused_game)
-                ]
+                cards = self._profile_workspace_cards(self._focused_game)
             if not cards:
                 self.statusBar().showMessage(
                     "Pin at least one card before starting focus mode",
@@ -1846,10 +2052,20 @@ class Dashboard(QMainWindow):
     def _cycle_cards(self) -> list[Card]:
         cards = self.store.list(pinned_only=True)
         if self._focused_game:
-            cards = [
-                card for card in cards if belongs_to_profile(card.game, self._focused_game)
-            ]
+            cards = self._profile_workspace_cards(self._focused_game)
         return cards
+
+    def _profile_workspace_cards(self, game: str) -> list[Card]:
+        cards = [
+            card
+            for card in self.store.list(pinned_only=True)
+            if belongs_to_profile(card.game, game)
+        ]
+        active_preset = self.store.active_workspace_preset(game)
+        if active_preset is None:
+            return cards
+        preset_ids = {pin.card_id for pin in active_preset.pins if pin.visible}
+        return [card for card in cards if card.id in preset_ids]
 
     def show_previous_pin(self) -> None:
         self._cycle_pin(-1)
