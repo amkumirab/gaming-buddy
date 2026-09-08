@@ -33,7 +33,7 @@ def test_release_metadata_rejects_mismatched_tag() -> None:
     assert "does not match project version" in result.stderr
 
 
-def test_installer_is_per_user_and_preserves_workspace() -> None:
+def test_installer_is_per_user_and_preserves_workspace_by_default() -> None:
     installer = (PROJECT_ROOT / "packaging/gaming-buddy.iss").read_text(encoding="utf-8")
 
     assert "PrivilegesRequired=lowest" in installer
@@ -42,7 +42,35 @@ def test_installer_is_per_user_and_preserves_workspace() -> None:
     assert "recursesubdirs createallsubdirs" in installer
     assert "ValueName: \"GamingBuddy\"; Flags: uninsdeletevalue dontcreatekey noerror" in installer
     assert "[UninstallDelete]" not in installer
-    assert r"{localappdata}\GamingBuddy" not in installer
+    assert "if (not RemoveData) and (not UninstallSilent) then" in installer
+    assert "MB_YESNO or MB_DEFBUTTON2" in installer
+    assert "Choose No to keep them for a future installation." in installer
+    assert "function HasCommandLineParameter" in installer
+    assert "HasCommandLineParameter('/PURGEUSERDATA')" in installer
+    assert r"DelTree(ExpandConstant('{localappdata}\GamingBuddy')" in installer
+    assert r"RegDeleteKeyIncludingSubkeys(HKCU, 'Software\GamingBuddy')" in installer
+
+
+def test_installer_supports_clean_updates_and_optional_launch() -> None:
+    installer = (PROJECT_ROOT / "packaging/gaming-buddy.iss").read_text(encoding="utf-8")
+
+    assert "UsePreviousAppDir=yes" in installer
+    assert "UsePreviousTasks=yes" in installer
+    assert '[InstallDelete]\nType: filesandordirs; Name: "{app}\\_internal"' in installer
+    assert "postinstall skipifsilent unchecked" in installer
+    assert "SetupLogging=yes" in installer
+
+
+def test_installer_build_script_generates_a_sha256_file() -> None:
+    script = (PROJECT_ROOT / "scripts/build_windows_installer.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "scripts/validate_release.py" in script
+    assert "Get-FileHash -LiteralPath $installer -Algorithm SHA256" in script
+    assert '"$installer.sha256"' in script
+    assert "Gaming-Buddy-Setup-$version-x64.exe" in script
+    assert '"$env:LOCALAPPDATA\\Programs\\Inno Setup 6\\ISCC.exe"' in script
 
 
 def test_release_workflow_uses_separate_write_permission() -> None:
@@ -56,6 +84,7 @@ def test_release_workflow_uses_separate_write_permission() -> None:
     assert "contents: write" in publish_job
     assert "--verify-tag" in publish_job
     assert "scripts/validate_release.py" in workflow
+    assert "./scripts/build_windows_installer.ps1 -SkipApplicationBuild" in workflow
 
 
 def test_windows_bundle_pins_compatible_qt_runtime_dependencies() -> None:

@@ -104,12 +104,15 @@ python -m gaming_buddy
 Download the latest `Gaming-Buddy-Setup-*-x64.exe` file from the repository's
 [Releases](https://github.com/amkumirab/gaming-buddy/releases) page and run it. The
 installer does not require administrator access. It creates a Start menu shortcut and
-can optionally create a desktop shortcut.
+can optionally create a desktop shortcut. Launching the application at the end of setup
+is also optional.
 
 Updates reuse the same installation and preserve the local workspace. Uninstalling the
 application removes program files, shortcuts, and its launch-at-sign-in entry but keeps
 notes and screenshots under `%LOCALAPPDATA%\GamingBuddy`. Interface preferences, shortcuts,
-and game profiles remain in the current user's Windows settings.
+and game profiles remain in the current user's Windows settings. During an interactive
+uninstall, the user can explicitly choose to permanently remove this workspace and its
+settings. Choosing **No**, or running a silent uninstall, preserves them by default.
 
 Unsigned preview builds may show a Windows SmartScreen warning. Every release includes
 a `.sha256` file so the installer can be checked before it is run.
@@ -251,14 +254,17 @@ python -m pytest
 python -m ruff check .
 ```
 
-Build the Windows application and installer with:
+Build the Windows application, installer, and SHA-256 checksum with:
 
 ```powershell
 python -m pip install -e ".[dev,packaging]"
-python scripts/validate_release.py
-python -m PyInstaller --clean --noconfirm packaging/gaming-buddy.spec
-& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging/gaming-buddy.iss
+./scripts/build_windows_installer.ps1
 ```
+
+The script validates synchronized version metadata before building. It requires Inno Setup 6.
+Pass `-SkipApplicationBuild` when the PyInstaller bundle has already been created. Silent
+uninstall keeps user data; administrators can pass `/PURGEUSERDATA` to the uninstaller only
+when permanent workspace removal is intended.
 
 Pushing a tag that exactly matches the project version, such as `v0.1.0`, runs the
 Windows release workflow and publishes the installer and its SHA-256 checksum. Running

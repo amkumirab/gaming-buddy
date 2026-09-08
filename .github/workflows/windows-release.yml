@@ -33,32 +33,7 @@ jobs:
         run: python -m PyInstaller --clean --noconfirm packaging/gaming-buddy.spec
       - name: Build installer and checksum
         shell: pwsh
-        run: |
-          $compiler = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-          if ($compiler) {
-            $compilerPath = $compiler.Source
-          } else {
-            $candidates = @(
-              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-              "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
-            )
-            $compilerPath = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-          }
-          if (-not $compilerPath) {
-            throw "Inno Setup compiler was not found on the runner."
-          }
-
-          & $compilerPath "packaging\gaming-buddy.iss"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Inno Setup failed with exit code $LASTEXITCODE."
-          }
-
-          $installer = Get-ChildItem -LiteralPath release -Filter "Gaming-Buddy-Setup-*.exe" -File
-          if ($installer.Count -ne 1) {
-            throw "Expected exactly one installer, found $($installer.Count)."
-          }
-          $checksum = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$checksum  $($installer.Name)" | Set-Content -LiteralPath "$($installer.FullName).sha256" -Encoding ascii
+        run: ./scripts/build_windows_installer.ps1 -SkipApplicationBuild
       - name: Upload installer
         uses: actions/upload-artifact@v7
         with:
