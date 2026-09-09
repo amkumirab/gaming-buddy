@@ -61,6 +61,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - First-run setup guide with a quick overview of capture, pins, and shortcuts
 - Optional launch at Windows sign-in without administrator access
 - Per-user Windows installer with clean update and uninstall support
+- Check GitHub Releases for updates and install a verified Windows release with permission
 - No code injection and no game-memory access
 
 ## Shortcuts
@@ -161,8 +162,14 @@ a `.sha256` file so the installer can be checked before it is run.
     reuses the existing cards, and the active layout returns with that game profile.
 23. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge cards, images, settings, and named layouts without deleting the current library.
-24. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-25. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+24. Choose **Updates** in the panel or **Check for updates…** in the tray. When a newer
+    GitHub Release is available, review its notes and choose **Download and install**. Gaming
+    Buddy verifies the published SHA-256 checksum and asks again before starting the Installer.
+25. Toggle **Check for updates automatically** in the tray. Automatic checks run no more than
+    once per day, never download in the background, and only show a notification when a newer
+    release exists.
+26. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+27. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -198,6 +205,8 @@ gaming-buddy/
 │   ├── pin_visibility.py # Focus-aware pin visibility controller
 │   ├── shortcut_dialog.py # Shortcut settings dialog
 │   ├── onboarding.py   # First-run setup guide
+│   ├── updates.py      # Release checks, secure downloads, and version comparison
+│   ├── update_dialog.py # Release notes and update consent
 │   ├── startup.py      # Per-user Windows startup setting
 │   ├── trash_dialog.py # Recently deleted cards and permanent cleanup
 │   ├── workspace_backup.py # Verified backup and restore
@@ -228,6 +237,10 @@ gaming-buddy/
 - Launch at sign-in is optional and uses the current user's Windows startup entry.
 - Backups are written only to the location selected by the user and are never uploaded.
 - Backup ZIP files are not encrypted, so they should be stored in a trusted location.
+- Optional update checks contact only the project's GitHub Releases API. They can be disabled
+  from the tray menu.
+- Updates are never downloaded or installed without the user's explicit choice. Installer
+  downloads are accepted only when their size and published SHA-256 checksum match.
 - Pin lock state is stored locally with the rest of each card's workspace layout.
 - Pin collapsed state and expanded size are stored locally and included in workspace backups.
 - Named workspace layouts are stored locally in SQLite and included in version 2 backups.

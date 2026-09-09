@@ -4,7 +4,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QProcess, QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QSlider,
     QSystemTrayIcon,
@@ -42,6 +43,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gaming_buddy import __version__
 from gaming_buddy.capture import SelectionOverlay, begin_capture
 from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.card_preview import CardPreviewPanel
@@ -64,6 +66,7 @@ from gaming_buddy.image_import import (
 )
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.onboarding import OnboardingDialog
+from gaming_buddy.paths import data_dir
 from gaming_buddy.pin import PinWidget
 from gaming_buddy.pin_cycle import PinCycleState
 from gaming_buddy.pin_visibility import PinVisibilityController
@@ -87,6 +90,13 @@ from gaming_buddy.text_recognition import (
 )
 from gaming_buddy.text_recognition_dialog import TextRecognitionDialog
 from gaming_buddy.trash_dialog import TrashDialog, remove_card_image_if_unused
+from gaming_buddy.update_dialog import UpdateAction, UpdateDialog
+from gaming_buddy.updates import (
+    ReleaseInfo,
+    UpdateController,
+    is_newer_version,
+    should_check_automatically,
+)
 from gaming_buddy.workspace_backup import (
     BackupError,
     create_workspace_backup,
@@ -132,6 +142,16 @@ class Dashboard(QMainWindow):
         self.capture_overlay: SelectionOverlay | None = None
         self._really_quit = False
         self._last_deleted_card_id: int | None = None
+        self.update_controller = UpdateController(self)
+        self.update_controller.update_available.connect(self._on_update_available)
+        self.update_controller.up_to_date.connect(self._on_update_up_to_date)
+        self.update_controller.check_failed.connect(self._on_update_check_failed)
+        self.update_controller.download_progress.connect(self._on_update_download_progress)
+        self.update_controller.download_ready.connect(self._on_update_download_ready)
+        self.update_controller.download_failed.connect(self._on_update_download_failed)
+        self._update_check_manual = False
+        self._pending_update: ReleaseInfo | None = None
+        self._update_progress: QProgressDialog | None = None
         self.undo_timer = QTimer(self)
         self.undo_timer.setSingleShot(True)
         self.undo_timer.timeout.connect(self._hide_undo)
@@ -149,6 +169,7 @@ class Dashboard(QMainWindow):
         QTimer.singleShot(0, self.restore_workspace)
         QTimer.singleShot(0, self.game_detector.start)
         QTimer.singleShot(350, self._show_first_run_setup)
+        QTimer.singleShot(10_000, self._check_for_updates_automatically)
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -163,10 +184,18 @@ class Dashboard(QMainWindow):
         hero_layout = QVBoxLayout(hero)
         brand = QLabel("GAMING BUDDY")
         brand.setObjectName("brand")
+        self.update_button = QPushButton(f"v{__version__}")
+        self.update_button.setObjectName("compact")
+        self.update_button.setToolTip("Check for Gaming Buddy updates")
+        self.update_button.clicked.connect(self.check_for_updates)
+        brand_row = QHBoxLayout()
+        brand_row.addWidget(brand)
+        brand_row.addStretch(1)
+        brand_row.addWidget(self.update_button)
         subtitle = QLabel("Your clues, builds and screenshots — always in reach.")
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
-        hero_layout.addWidget(brand)
+        hero_layout.addLayout(brand_row)
         hero_layout.addWidget(subtitle)
         layout.addWidget(hero)
 
@@ -481,6 +510,14 @@ class Dashboard(QMainWindow):
         trash_action.triggered.connect(self.open_trash)
         getting_started_action = QAction("Getting started…", menu)
         getting_started_action.triggered.connect(self.show_getting_started)
+        self.check_updates_action = QAction("Check for updates…", menu)
+        self.check_updates_action.triggered.connect(self.check_for_updates)
+        self.auto_update_checks_action = QAction("Check for updates automatically", menu)
+        self.auto_update_checks_action.setCheckable(True)
+        self.auto_update_checks_action.setChecked(
+            self.settings.value("updates/automatic_checks", True, type=bool)
+        )
+        self.auto_update_checks_action.toggled.connect(self.set_automatic_update_checks)
         self.launch_at_sign_in_action = QAction("Launch at Windows sign-in", menu)
         self.launch_at_sign_in_action.setCheckable(True)
         self.launch_at_sign_in_action.setChecked(self.startup_manager.is_enabled())
@@ -513,6 +550,8 @@ class Dashboard(QMainWindow):
         menu.addAction(trash_action)
         menu.addSeparator()
         menu.addAction(getting_started_action)
+        menu.addAction(self.check_updates_action)
+        menu.addAction(self.auto_update_checks_action)
         menu.addAction(self.launch_at_sign_in_action)
         menu.addSeparator()
         menu.addAction(quit_action)
@@ -535,6 +574,11 @@ class Dashboard(QMainWindow):
         self.auto_hide_pins.setChecked(
             self.settings.value("profiles/auto_hide_pins", False, type=bool)
         )
+        blocker = QSignalBlocker(self.auto_update_checks_action)
+        self.auto_update_checks_action.setChecked(
+            self.settings.value("updates/automatic_checks", True, type=bool)
+        )
+        del blocker
         preview_visible = self.settings.value("preview/visible", True, type=bool)
         self._set_preview_visible(preview_visible)
         if not preview_visible and not geometry:
@@ -577,6 +621,155 @@ class Dashboard(QMainWindow):
         blocker = QSignalBlocker(self.launch_at_sign_in_action)
         self.launch_at_sign_in_action.setChecked(self.startup_manager.is_enabled())
         del blocker
+
+    def set_automatic_update_checks(self, enabled: bool) -> None:
+        self.settings.setValue("updates/automatic_checks", enabled)
+        self.settings.sync()
+        message = (
+            "Automatic update checks enabled"
+            if enabled
+            else "Automatic update checks disabled"
+        )
+        self.statusBar().showMessage(message, 2500)
+
+    def _check_for_updates_automatically(self) -> None:
+        if not self.auto_update_checks_action.isChecked():
+            return
+        last_attempt = str(self.settings.value("updates/last_attempt", ""))
+        if should_check_automatically(last_attempt):
+            self._start_update_check(manual=False)
+
+    def check_for_updates(self, _checked: bool = False) -> None:
+        if self._pending_update is not None and is_newer_version(
+            self._pending_update.version
+        ):
+            self._show_update_dialog(self._pending_update)
+            return
+        self._start_update_check(manual=True)
+
+    def _start_update_check(self, *, manual: bool) -> None:
+        if not self.update_controller.check_for_updates():
+            if manual:
+                self.statusBar().showMessage("An update task is already running", 2500)
+            return
+        self._update_check_manual = manual
+        self.settings.setValue("updates/last_attempt", datetime.now(UTC).isoformat())
+        self.settings.sync()
+        if manual:
+            self.statusBar().showMessage("Checking for updates…")
+
+    def _on_update_available(self, release: ReleaseInfo) -> None:
+        self._pending_update = release
+        self.update_button.setText(f"Update {release.version}")
+        self.update_button.setToolTip("Review and install the available update")
+        self.check_updates_action.setText(f"Install update {release.version}…")
+        if self._update_check_manual:
+            self._show_update_dialog(release)
+        else:
+            self.tray.showMessage(
+                "Gaming Buddy update available",
+                f"Version {release.version} is ready. Open Gaming Buddy to install it.",
+                QSystemTrayIcon.MessageIcon.Information,
+                5000,
+            )
+        self._update_check_manual = False
+
+    def _on_update_up_to_date(self, _release: ReleaseInfo) -> None:
+        self._pending_update = None
+        self.update_button.setText(f"v{__version__}")
+        self.update_button.setToolTip("Check for Gaming Buddy updates")
+        self.check_updates_action.setText("Check for updates…")
+        if self._update_check_manual:
+            QMessageBox.information(
+                self,
+                "No updates available",
+                f"Gaming Buddy {__version__} is the latest published version.",
+            )
+        self._update_check_manual = False
+
+    def _on_update_check_failed(self, message: str) -> None:
+        if self._update_check_manual:
+            QMessageBox.warning(self, "Update check failed", message)
+        self._update_check_manual = False
+
+    def _show_update_dialog(self, release: ReleaseInfo) -> None:
+        dialog = UpdateDialog(__version__, release, self)
+        if not dialog.exec() or dialog.action is None:
+            return
+        if dialog.action is UpdateAction.VIEW_RELEASE:
+            if not QDesktopServices.openUrl(QUrl(release.page_url)):
+                QMessageBox.warning(
+                    self,
+                    "Could not open release",
+                    "The release page could not be opened in your browser.",
+                )
+            return
+        self._download_update(release)
+
+    def _download_update(self, release: ReleaseInfo) -> None:
+        progress = QProgressDialog("Preparing update download…", "Cancel", 0, 100, self)
+        progress.setWindowTitle(f"Downloading Gaming Buddy {release.version}")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.canceled.connect(self.update_controller.cancel_download)
+        self._update_progress = progress
+        if not self.update_controller.download_update(release, data_dir() / "updates"):
+            self._close_update_progress()
+            self.statusBar().showMessage("An update task is already running", 2500)
+            return
+        progress.show()
+
+    def _on_update_download_progress(self, received: int, total: int) -> None:
+        progress = self._update_progress
+        if progress is None:
+            return
+        if total > 0:
+            percent = min(100, max(0, int(received * 100 / total)))
+            progress.setRange(0, 100)
+            progress.setValue(percent)
+            progress.setLabelText(f"Downloading update… {percent}%")
+        else:
+            progress.setRange(0, 0)
+            progress.setLabelText("Downloading update…")
+
+    def _on_update_download_failed(self, message: str) -> None:
+        self._close_update_progress()
+        if message == "Update download cancelled.":
+            self.statusBar().showMessage(message, 2500)
+            return
+        QMessageBox.warning(self, "Update download failed", message)
+
+    def _on_update_download_ready(self, installer_path: str, release: ReleaseInfo) -> None:
+        self._close_update_progress()
+        answer = QMessageBox.question(
+            self,
+            "Install update now?",
+            f"Gaming Buddy {release.version} was downloaded and verified.\n\n"
+            "The application will close before the installer starts. Your saved cards, "
+            "screenshots, and settings will be kept.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self.statusBar().showMessage("Verified update saved for later", 3000)
+            return
+        started = QProcess.startDetached(installer_path, [])
+        launch_succeeded = started[0] if isinstance(started, tuple) else bool(started)
+        if not launch_succeeded:
+            QMessageBox.warning(
+                self,
+                "Could not start installer",
+                f"The verified installer is available at:\n{installer_path}",
+            )
+            return
+        self.quit_app()
+
+    def _close_update_progress(self) -> None:
+        if self._update_progress is not None:
+            self._update_progress.close()
+            self._update_progress.deleteLater()
+            self._update_progress = None
 
     def set_auto_profiles(self, enabled: bool) -> None:
         self.settings.setValue("profiles/auto_switch", enabled)
@@ -2254,6 +2447,7 @@ class Dashboard(QMainWindow):
 
     def quit_app(self) -> None:
         self.game_detector.stop()
+        self.update_controller.cancel_download()
         for pin in self.pins.values():
             pin.save_now()
         self._really_quit = True

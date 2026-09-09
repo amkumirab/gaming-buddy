@@ -28,6 +28,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
     source_settings.setValue("preview/visible", False)
     source_settings.setValue("recognition/language", "en-US")
     source_settings.setValue("focus/opacity", 65)
+    source_settings.setValue("updates/automatic_checks", False)
     source_settings.setValue("shortcuts/capture_area", "Ctrl+Alt+C")
     source_settings.setValue("shortcuts/quick_finder", "Ctrl+Alt+F")
     source_settings.setValue("shortcuts/toggle_focus_mode", "Ctrl+Alt+M")
@@ -122,6 +123,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
         assert restored_settings.value("preview/visible", type=bool) is False
         assert restored_settings.value("recognition/language") == "en-US"
         assert restored_settings.value("focus/opacity", type=int) == 65
+        assert restored_settings.value("updates/automatic_checks", type=bool) is False
         assert restored_settings.value("shortcuts/quick_finder") == "Ctrl+Alt+F"
         assert restored_settings.value("shortcuts/toggle_focus_mode") == "Ctrl+Alt+M"
         assert restored_settings.value("shortcuts/previous_pin") == "Ctrl+Alt+Left"

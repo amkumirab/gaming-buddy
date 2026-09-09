@@ -33,6 +33,7 @@ PORTABLE_SETTING_KEYS = {
     "profiles/executable_map",
     "preview/visible",
     "recognition/language",
+    "updates/automatic_checks",
     "focus/opacity",
     "shortcuts/toggle_panel",
     "shortcuts/quick_finder",

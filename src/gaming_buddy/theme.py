@@ -104,14 +104,14 @@ QLabel#section {
     font-size: 12px;
     font-weight: 700;
 }
-QLineEdit, QTextEdit, QListWidget, QTableWidget, QComboBox {
+QLineEdit, QTextEdit, QPlainTextEdit, QListWidget, QTableWidget, QComboBox {
     background: #0d0b14;
     border: 1px solid #39304d;
     border-radius: 10px;
     padding: 9px;
     selection-background-color: #7657ff;
 }
-QLineEdit:focus, QTextEdit:focus, QListWidget:focus, QTableWidget:focus, QComboBox:focus {
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QListWidget:focus, QTableWidget:focus, QComboBox:focus {
     border: 1px solid #8a6cff;
 }
 QTextBrowser#previewText {
