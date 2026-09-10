@@ -24,6 +24,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
     )
     source_settings.setValue("game", "Control")
     source_settings.setValue("click_through", True)
+    source_settings.setValue("pins/default_opacity", 81)
     source_settings.setValue("profiles/auto_hide_pins", True)
     source_settings.setValue("preview/visible", False)
     source_settings.setValue("recognition/language", "en-US")
@@ -119,6 +120,7 @@ def test_workspace_backup_round_trip_and_duplicate_detection(tmp_path):
         assert Path(restored_image.image_path).read_bytes() == b"lossless-image-content"
         assert restored_settings.value("game") == "Control"
         assert restored_settings.value("click_through", type=bool) is True
+        assert restored_settings.value("pins/default_opacity", type=int) == 81
         assert restored_settings.value("profiles/auto_hide_pins", type=bool) is True
         assert restored_settings.value("preview/visible", type=bool) is False
         assert restored_settings.value("recognition/language") == "en-US"

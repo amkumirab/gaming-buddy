@@ -58,6 +58,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Keep restored pins visible when monitors or resolutions change
 - Persist everything locally in SQLite
 - Configurable global shortcuts and a system tray menu
+- Central settings window for overlay, profile, startup, update, and shortcut preferences
 - First-run setup guide with a quick overview of capture, pins, and shortcuts
 - Optional launch at Windows sign-in without administrator access
 - Per-user Windows installer with clean update and uninstall support
@@ -147,7 +148,8 @@ a `.sha256` file so the installer can be checked before it is run.
 15. Select a card in the library to preview its image or full text. Use the preview panel to
     pin, edit, copy, or extract screenshot text without opening a context menu. Close the
     panel when you want the compact layout and reopen it with **Preview**.
-16. Open **Keyboard shortcuts…** to personalize controls without restarting.
+16. Open **Settings…** to manage overlay opacity, profile behavior, startup, updates, and
+    global shortcuts in one place. Changes are applied only after choosing **Save**.
 17. Choose **Edit** on a card to add comma-separated tags such as `map`, `boss`, or
     `build`. Open **Filters** to combine tag, type, pinned, favorite, and game filters.
 18. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
@@ -204,6 +206,7 @@ gaming-buddy/
 │   ├── image_import.py # Lossless image import and duplicate checks
 │   ├── pin_visibility.py # Focus-aware pin visibility controller
 │   ├── shortcut_dialog.py # Shortcut settings dialog
+│   ├── settings_dialog.py # Central application settings and About panel
 │   ├── onboarding.py   # First-run setup guide
 │   ├── updates.py      # Release checks, secure downloads, and version comparison
 │   ├── update_dialog.py # Release notes and update consent

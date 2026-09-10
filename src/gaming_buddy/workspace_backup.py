@@ -28,6 +28,7 @@ MAX_IMAGE_BYTES = 256 * 1024 * 1024
 PORTABLE_SETTING_KEYS = {
     "game",
     "click_through",
+    "pins/default_opacity",
     "profiles/auto_hide_pins",
     "profiles/auto_switch",
     "profiles/executable_map",

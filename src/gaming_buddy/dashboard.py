@@ -79,6 +79,7 @@ from gaming_buddy.profiles import (
     belongs_to_profile,
 )
 from gaming_buddy.quick_finder import QuickFinderDialog, updated_search_history
+from gaming_buddy.settings_dialog import SettingsDialog, SettingsSnapshot
 from gaming_buddy.shortcut_dialog import ShortcutDialog
 from gaming_buddy.startup import StartupError, StartupManager
 from gaming_buddy.storage import CardStore
@@ -267,6 +268,9 @@ class Dashboard(QMainWindow):
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setRange(30, 100)
         self.opacity_slider.setValue(88)
+        self.opacity_slider.valueChanged.connect(
+            lambda value: self.settings.setValue("pins/default_opacity", value)
+        )
         controls.addWidget(opacity_label)
         controls.addWidget(self.opacity_slider, 1)
         layout.addLayout(controls)
@@ -330,15 +334,15 @@ class Dashboard(QMainWindow):
         layout.addLayout(layout_controls)
 
         tools = QHBoxLayout()
-        shortcuts_button = QPushButton("Shortcuts…")
-        shortcuts_button.clicked.connect(self.edit_shortcuts)
+        settings_button = QPushButton("Settings…")
+        settings_button.clicked.connect(self.open_settings)
         backup_button = QPushButton("Backup…")
         backup_button.clicked.connect(self.backup_workspace)
         restore_button = QPushButton("Restore…")
         restore_button.clicked.connect(self.restore_backup)
         getting_started_button = QPushButton("Getting started…")
         getting_started_button.clicked.connect(self.show_getting_started)
-        tools.addWidget(shortcuts_button)
+        tools.addWidget(settings_button)
         tools.addWidget(backup_button)
         tools.addWidget(restore_button)
         tools.addWidget(getting_started_button)
@@ -498,6 +502,8 @@ class Dashboard(QMainWindow):
         self.auto_hide_pins_action.triggered.connect(self.set_auto_hide_pins)
         shortcuts_action = QAction("Keyboard shortcuts…", menu)
         shortcuts_action.triggered.connect(self.edit_shortcuts)
+        settings_action = QAction("Settings…", menu)
+        settings_action.triggered.connect(self.open_settings)
         profiles_action = QAction("Game profiles…", menu)
         profiles_action.triggered.connect(self.manage_profiles)
         layouts_action = QAction("Workspace layouts…", menu)
@@ -550,6 +556,7 @@ class Dashboard(QMainWindow):
         menu.addAction(trash_action)
         menu.addSeparator()
         menu.addAction(getting_started_action)
+        menu.addAction(settings_action)
         menu.addAction(self.check_updates_action)
         menu.addAction(self.auto_update_checks_action)
         menu.addAction(self.launch_at_sign_in_action)
@@ -566,6 +573,9 @@ class Dashboard(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
+        self.opacity_slider.setValue(
+            min(100, max(30, self.settings.value("pins/default_opacity", 88, type=int)))
+        )
         self.focus_opacity_slider.setValue(
             min(100, max(30, self.settings.value("focus/opacity", 70, type=int)))
         )
@@ -597,6 +607,48 @@ class Dashboard(QMainWindow):
         dialog = OnboardingDialog(self.shortcuts, launch_at_sign_in, self)
         if dialog.exec() and dialog.launch_at_sign_in != launch_at_sign_in:
             self.set_launch_at_sign_in(dialog.launch_at_sign_in)
+
+    def open_settings(self, _checked: bool = False) -> None:
+        current_startup = self.startup_manager.is_enabled()
+        values = SettingsSnapshot(
+            launch_at_sign_in=current_startup,
+            automatic_update_checks=self.auto_update_checks_action.isChecked(),
+            auto_switch_profiles=self.auto_profiles.isChecked(),
+            auto_hide_pins=self.auto_hide_pins.isChecked(),
+            click_through_pins=self.click_through.isChecked(),
+            default_pin_opacity=self.opacity_slider.value(),
+            focus_opacity=self.focus_opacity_slider.value(),
+            shortcuts=self.shortcuts.copy(),
+        )
+        self.shortcut_editing_started.emit()
+        dialog = SettingsDialog(
+            values,
+            version=__version__,
+            storage_path=data_dir(),
+            startup_supported=self.startup_manager.supported,
+            parent=self,
+        )
+        if not dialog.exec():
+            self.shortcut_editing_cancelled.emit()
+            return
+
+        updated = dialog.values()
+        self.shortcuts = updated.shortcuts
+        for action, shortcut in self.shortcuts.items():
+            self.settings.setValue(f"shortcuts/{action}", shortcut)
+        self.opacity_slider.setValue(updated.default_pin_opacity)
+        self.settings.setValue("pins/default_opacity", updated.default_pin_opacity)
+        self.focus_opacity_slider.setValue(updated.focus_opacity)
+        self.click_through.setChecked(updated.click_through_pins)
+        self.auto_profiles.setChecked(updated.auto_switch_profiles)
+        self.auto_hide_pins.setChecked(updated.auto_hide_pins)
+        self.auto_update_checks_action.setChecked(updated.automatic_update_checks)
+        if updated.launch_at_sign_in != current_startup:
+            self.set_launch_at_sign_in(updated.launch_at_sign_in)
+        self.settings.sync()
+        self._update_shortcut_labels()
+        self.shortcuts_changed.emit(self.shortcuts.copy())
+        self.statusBar().showMessage("Settings saved", 3000)
 
     def set_launch_at_sign_in(self, enabled: bool) -> None:
         try:
@@ -1050,6 +1102,9 @@ class Dashboard(QMainWindow):
         self.profile_store = GameProfileStore(self.settings)
         self.game_input.setText(str(self.settings.value("game", "")))
         self.click_through.setChecked(self.settings.value("click_through", False, type=bool))
+        self.opacity_slider.setValue(
+            min(100, max(30, self.settings.value("pins/default_opacity", 88, type=int)))
+        )
         self.focus_opacity_slider.setValue(
             min(100, max(30, self.settings.value("focus/opacity", 70, type=int)))
         )
@@ -1058,6 +1113,11 @@ class Dashboard(QMainWindow):
         self.auto_hide_pins.setChecked(
             self.settings.value("profiles/auto_hide_pins", False, type=bool)
         )
+        blocker = QSignalBlocker(self.auto_update_checks_action)
+        self.auto_update_checks_action.setChecked(
+            self.settings.value("updates/automatic_checks", True, type=bool)
+        )
+        del blocker
 
     def _on_game_changed(self, value: str) -> None:
         self.settings.setValue("game", value)
