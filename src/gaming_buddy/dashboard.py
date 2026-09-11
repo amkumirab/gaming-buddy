@@ -65,6 +65,7 @@ from gaming_buddy.image_import import (
     save_imported_image,
 )
 from gaming_buddy.models import Card, CardKind
+from gaming_buddy.note_drafts import DraftError, NoteDraftStore
 from gaming_buddy.onboarding import OnboardingDialog
 from gaming_buddy.paths import data_dir
 from gaming_buddy.pin import PinWidget
@@ -153,6 +154,13 @@ class Dashboard(QMainWindow):
         self._update_check_manual = False
         self._pending_update: ReleaseInfo | None = None
         self._update_progress: QProgressDialog | None = None
+        self.note_draft_store = NoteDraftStore(
+            self.captures_dir.parent / "drafts" / "quick-note.json"
+        )
+        self.note_draft_timer = QTimer(self)
+        self.note_draft_timer.setSingleShot(True)
+        self.note_draft_timer.setInterval(800)
+        self.note_draft_timer.timeout.connect(self._save_note_draft)
         self.undo_timer = QTimer(self)
         self.undo_timer.setSingleShot(True)
         self.undo_timer.timeout.connect(self._hide_undo)
@@ -165,6 +173,7 @@ class Dashboard(QMainWindow):
         self._build_ui()
         self._build_tray()
         self._restore_settings()
+        self._restore_note_draft()
         self.refresh_cards()
         QTimer.singleShot(0, self._purge_expired_trash)
         QTimer.singleShot(0, self.restore_workspace)
@@ -242,8 +251,23 @@ class Dashboard(QMainWindow):
         self.note_input = QTextEdit()
         self.note_input.setPlaceholderText("Door code, quest clue, build order…")
         self.note_input.setMaximumHeight(105)
+        self.note_input.textChanged.connect(self._schedule_note_draft_save)
         layout.addWidget(note_label)
         layout.addWidget(self.note_input)
+
+        self.note_draft_bar = QFrame()
+        self.note_draft_bar.setObjectName("setupCard")
+        draft_layout = QHBoxLayout(self.note_draft_bar)
+        draft_layout.setContentsMargins(10, 6, 6, 6)
+        self.note_draft_label = QLabel("Draft saved locally")
+        self.note_draft_label.setObjectName("muted")
+        discard_draft = QPushButton("Discard draft")
+        discard_draft.setObjectName("compact")
+        discard_draft.clicked.connect(self.discard_note_draft)
+        draft_layout.addWidget(self.note_draft_label, 1)
+        draft_layout.addWidget(discard_draft)
+        self.note_draft_bar.hide()
+        layout.addWidget(self.note_draft_bar)
 
         note_buttons = QHBoxLayout()
         save_button = QPushButton("Save")
@@ -1121,8 +1145,75 @@ class Dashboard(QMainWindow):
 
     def _on_game_changed(self, value: str) -> None:
         self.settings.setValue("game", value)
+        if self.note_input.toPlainText().strip():
+            self.note_draft_timer.start()
         if self.filter_current.isChecked():
             self.refresh_cards()
+
+    def _schedule_note_draft_save(self) -> None:
+        if self.note_input.toPlainText().strip():
+            self.note_draft_timer.start()
+            return
+        self.note_draft_timer.stop()
+        try:
+            self.note_draft_store.clear()
+        except DraftError as error:
+            self.statusBar().showMessage(str(error), 3500)
+        self.note_draft_bar.hide()
+
+    def _save_note_draft(self) -> None:
+        try:
+            draft = self.note_draft_store.save(
+                self.note_input.toPlainText(),
+                self.game_input.text(),
+            )
+        except DraftError as error:
+            self.statusBar().showMessage(str(error), 3500)
+            return
+        if draft is None:
+            self.note_draft_bar.hide()
+            return
+        self.note_draft_label.setText("Draft saved locally")
+        self.note_draft_bar.show()
+
+    def _restore_note_draft(self) -> None:
+        draft = self.note_draft_store.load()
+        if draft is None:
+            return
+        if draft.game:
+            self.game_input.setText(draft.game)
+        blocker = QSignalBlocker(self.note_input)
+        self.note_input.setPlainText(draft.text)
+        del blocker
+        self.note_draft_label.setText("Draft restored after the previous session")
+        self.note_draft_bar.show()
+        self.statusBar().showMessage("Unsaved note draft restored", 3500)
+
+    def discard_note_draft(self, _checked: bool = False) -> None:
+        if not self.note_input.toPlainText().strip():
+            return
+        answer = QMessageBox.question(
+            self,
+            "Discard note draft?",
+            "This unsaved note will be removed permanently.",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Discard:
+            return
+        self._clear_note_editor_and_draft()
+        self.statusBar().showMessage("Note draft discarded", 2500)
+
+    def _clear_note_editor_and_draft(self) -> None:
+        self.note_draft_timer.stop()
+        blocker = QSignalBlocker(self.note_input)
+        self.note_input.clear()
+        del blocker
+        try:
+            self.note_draft_store.clear()
+        except DraftError as error:
+            self.statusBar().showMessage(str(error), 3500)
+        self.note_draft_bar.hide()
 
     def _make_note(self) -> Card | None:
         content = self.note_input.toPlainText().strip()
@@ -1145,7 +1236,7 @@ class Dashboard(QMainWindow):
         if card is None:
             return
         self.store.add(card)
-        self.note_input.clear()
+        self._clear_note_editor_and_draft()
         self.refresh_cards()
         self.statusBar().showMessage("Note saved", 2500)
 
@@ -1154,7 +1245,7 @@ class Dashboard(QMainWindow):
         if card is None:
             return
         self.store.add(card)
-        self.note_input.clear()
+        self._clear_note_editor_and_draft()
         self.show_pin(card)
         self.refresh_cards()
 
@@ -2506,6 +2597,8 @@ class Dashboard(QMainWindow):
             )
 
     def quit_app(self) -> None:
+        self.note_draft_timer.stop()
+        self._save_note_draft()
         self.game_detector.stop()
         self.update_controller.cancel_download()
         for pin in self.pins.values():

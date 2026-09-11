@@ -27,6 +27,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Annotate screenshots with a pen, arrows, rectangles, text, and a pixel-restoring eraser
 - Undo, redo, or reset edits and save the result as a new lossless copy
 - Create, save, and pin quick text notes
+- Autosave unfinished notes locally and restore them after an interrupted session
 - Move and resize every pinned card
 - Snap pins to nearby screen edges and lock their position and size
 - Collapse pins into compact title bars and expand them when needed
@@ -123,6 +124,8 @@ a `.sha256` file so the installer can be checked before it is run.
 
 1. Enter the current game name in the top field.
 2. Write a note and choose **Save** or **Pin note**.
+   Unfinished text is saved locally after a short pause and restored the next time the app
+   starts. Choose **Discard draft** to remove it without creating a card.
 3. Choose **Capture area**, drag around a clue or map, and release.
 4. Choose **Import image…**, drag image files onto the panel, or paste an image with `Ctrl+V`.
    Select **Save** or **Save and pin** after checking the preview.
@@ -198,6 +201,7 @@ gaming-buddy/
 │   ├── profiles.py     # Active-game detection and profile mappings
 │   ├── profile_dialog.py # Profile manager
 │   ├── quick_finder.py # Keyboard-first saved-card search overlay
+│   ├── note_drafts.py  # Crash-safe local quick-note draft storage
 │   ├── text_recognition.py # Local Windows screenshot text recognition
 │   ├── text_recognition_dialog.py # Recognition review and language controls
 │   ├── tags.py         # Tag normalization and display helpers
@@ -224,6 +228,8 @@ gaming-buddy/
 ## Privacy and storage
 
 - Notes and captured images remain on the user's computer.
+- Unfinished quick-note drafts remain local and are removed after saving, pinning, or choosing
+  **Discard draft**.
 - Deleted cards and their images remain recoverable locally for 30 days unless the recycle
   bin is emptied earlier.
 - Interface preferences, shortcut mappings, and profiles use the current Windows account.
