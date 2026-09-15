@@ -332,6 +332,55 @@ def test_bulk_collapse_only_changes_pinned_cards(tmp_path):
         assert store.get(library_card.id).collapsed is True
 
 
+def test_bulk_card_updates_are_atomic_and_ignore_missing_ids(tmp_path):
+    with CardStore(tmp_path / "cards.sqlite3") as store:
+        first = store.add(
+            Card(
+                None,
+                CardKind.NOTE,
+                "Control",
+                "First",
+                tags=("boss", "old route"),
+            )
+        )
+        second = store.add(
+            Card(None, CardKind.NOTE, "Control", "Second", tags=("map",))
+        )
+        third = store.add(Card(None, CardKind.IMAGE, "General", "Third"))
+        assert first.id is not None and second.id is not None and third.id is not None
+        selected = [first.id, second.id, first.id, 999_999]
+
+        assert store.update_many_favorite(selected, True) == 2
+        assert store.update_many_favorite(selected, True) == 0
+        assert store.get(first.id).favorite is True
+        assert store.get(second.id).favorite is True
+        assert store.get(third.id).favorite is False
+
+        assert store.update_many_pinned(selected, True) == 2
+        assert store.get(first.id).pinned is True
+        assert store.get(second.id).pinned is True
+
+        assert store.update_many_game(selected, "Alan Wake 2") == 2
+        assert store.get(first.id).game == "Alan Wake 2"
+        assert store.get(second.id).game == "Alan Wake 2"
+        assert store.get(third.id).game == "General"
+
+        assert store.update_many_tags(
+            selected,
+            add=("clue", "BOSS"),
+            remove=("old route", "map"),
+        ) == 2
+        assert store.get(first.id).tags == ("boss", "clue")
+        assert store.get(second.id).tags == ("BOSS", "clue")
+
+        assert store.move_many_to_trash(selected) == 2
+        assert store.get(first.id) is None
+        assert store.get(second.id) is None
+        assert store.get_deleted(first.id).pinned is False
+        assert store.get_deleted(second.id).pinned is False
+        assert store.get(third.id) is not None
+
+
 def test_deleted_cards_can_be_searched_and_purged_by_age(tmp_path):
     database = tmp_path / "cards.sqlite3"
     with CardStore(database) as store:

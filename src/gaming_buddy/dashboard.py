@@ -4,7 +4,16 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import (
+    QItemSelectionModel,
+    QProcess,
+    QSettings,
+    QSignalBlocker,
+    Qt,
+    QTimer,
+    QUrl,
+    Signal,
+)
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -20,6 +29,7 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QDockWidget,
@@ -44,6 +54,7 @@ from PySide6.QtWidgets import (
 )
 
 from gaming_buddy import __version__
+from gaming_buddy.bulk_card_dialog import BulkCardDialog
 from gaming_buddy.capture import SelectionOverlay, begin_capture
 from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.card_preview import CardPreviewPanel
@@ -375,6 +386,9 @@ class Dashboard(QMainWindow):
         library_header = QHBoxLayout()
         library_label = QLabel("SAVED CARDS")
         library_label.setObjectName("section")
+        self.library_selection_label = QLabel()
+        self.library_selection_label.setObjectName("muted")
+        self.library_selection_label.hide()
         self.trash_button = QPushButton()
         self.trash_button.setObjectName("compact")
         self.trash_button.setToolTip("Open recently deleted cards")
@@ -420,10 +434,42 @@ class Dashboard(QMainWindow):
         self.filter_button = QPushButton("Filters")
         self.filter_button.setObjectName("compact")
         self.filter_button.setMenu(self.library_filter_menu)
+        self.bulk_actions_menu = QMenu(self)
+        self.bulk_pin_action = self.bulk_actions_menu.addAction("Pin selected")
+        self.bulk_pin_action.triggered.connect(
+            lambda _checked=False: self._bulk_set_pinned(True)
+        )
+        self.bulk_unpin_action = self.bulk_actions_menu.addAction("Unpin selected")
+        self.bulk_unpin_action.triggered.connect(
+            lambda _checked=False: self._bulk_set_pinned(False)
+        )
+        self.bulk_actions_menu.addSeparator()
+        self.bulk_favorite_action = self.bulk_actions_menu.addAction("Add to favorites")
+        self.bulk_favorite_action.triggered.connect(
+            lambda _checked=False: self._bulk_set_favorite(True)
+        )
+        self.bulk_unfavorite_action = self.bulk_actions_menu.addAction(
+            "Remove from favorites"
+        )
+        self.bulk_unfavorite_action.triggered.connect(
+            lambda _checked=False: self._bulk_set_favorite(False)
+        )
+        self.bulk_actions_menu.addSeparator()
+        self.bulk_organize_action = self.bulk_actions_menu.addAction("Organize selected…")
+        self.bulk_organize_action.triggered.connect(self._bulk_organize_selected)
+        self.bulk_actions_menu.addSeparator()
+        self.bulk_trash_action = self.bulk_actions_menu.addAction("Move selected to trash")
+        self.bulk_trash_action.triggered.connect(self._bulk_move_to_trash)
+        self.bulk_actions_button = QPushButton("Bulk actions")
+        self.bulk_actions_button.setObjectName("compact")
+        self.bulk_actions_button.setMenu(self.bulk_actions_menu)
+        self.bulk_actions_button.hide()
         library_header.addWidget(library_label)
+        library_header.addWidget(self.library_selection_label)
         library_header.addWidget(self.trash_button)
         library_header.addWidget(self.preview_button)
         library_header.addWidget(self.filter_button)
+        library_header.addWidget(self.bulk_actions_button)
         library_header.addStretch(1)
         layout.addLayout(library_header)
 
@@ -449,8 +495,12 @@ class Dashboard(QMainWindow):
         layout.addWidget(self.undo_bar)
 
         self.card_list = QListWidget()
+        self.card_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         self.card_list.itemDoubleClicked.connect(self._pin_selected)
         self.card_list.currentItemChanged.connect(self._update_card_preview)
+        self.card_list.itemSelectionChanged.connect(self._update_selection_summary)
         self.card_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.card_list.customContextMenuRequested.connect(self._library_menu)
         layout.addWidget(self.card_list, 1)
@@ -1806,13 +1856,18 @@ class Dashboard(QMainWindow):
     def refresh_cards(self) -> None:
         if not hasattr(self, "card_list"):
             return
-        selected = self.card_list.currentItem()
-        selected_id = (
-            int(selected.data(Qt.ItemDataRole.UserRole)) if selected is not None else None
+        current = self.card_list.currentItem()
+        current_id = (
+            int(current.data(Qt.ItemDataRole.UserRole)) if current is not None else None
         )
+        selected_ids = {
+            int(item.data(Qt.ItemDataRole.UserRole))
+            for item in self.card_list.selectedItems()
+        }
         game = self.game_input.text() if self.filter_current.isChecked() else None
         query = self.search_cards.text()
-        selected_item: QListWidgetItem | None = None
+        current_item: QListWidgetItem | None = None
+        selected_items: list[QListWidgetItem] = []
         blocker = QSignalBlocker(self.card_list)
         self.card_list.clear()
         for card in self.store.list(
@@ -1847,13 +1902,20 @@ class Dashboard(QMainWindow):
                 tooltip = f"{tooltip}\n\nTags: {', '.join(card.tags)}"
             item.setToolTip(tooltip)
             self.card_list.addItem(item)
-            if card.id == selected_id:
-                selected_item = item
-        if selected_item is not None:
-            self.card_list.setCurrentItem(selected_item)
+            if card.id == current_id:
+                current_item = item
+            if card.id in selected_ids:
+                selected_items.append(item)
+        if current_item is None and selected_items:
+            current_item = selected_items[0]
+        if current_item is not None:
+            self.card_list.setCurrentItem(current_item)
+            for item in selected_items:
+                item.setSelected(True)
         elif self.card_list.count():
             self.card_list.setCurrentRow(0)
         del blocker
+        self._update_selection_summary()
         self._update_card_preview(self.card_list.currentItem())
         self._update_filter_button()
         self._update_trash_button()
@@ -1935,7 +1997,7 @@ class Dashboard(QMainWindow):
         current: QListWidgetItem | None,
         _previous: QListWidgetItem | None = None,
     ) -> None:
-        if current is None:
+        if current is None or len(self.card_list.selectedItems()) > 1:
             self.card_preview.clear()
             return
         card = self.store.get(int(current.data(Qt.ItemDataRole.UserRole)))
@@ -1967,6 +2029,150 @@ class Dashboard(QMainWindow):
             return None
         return self.store.get(int(item.data(Qt.ItemDataRole.UserRole)))
 
+    def _selected_cards(self) -> list[Card]:
+        items = self.card_list.selectedItems()
+        if not items and self.card_list.currentItem() is not None:
+            items = [self.card_list.currentItem()]
+        cards: list[Card] = []
+        for item in items:
+            card = self.store.get(int(item.data(Qt.ItemDataRole.UserRole)))
+            if card is not None:
+                cards.append(card)
+        return cards
+
+    def _update_selection_summary(self) -> None:
+        count = len(self.card_list.selectedItems())
+        multiple = count > 1
+        self.library_selection_label.setText(f"{count} selected")
+        self.library_selection_label.setVisible(multiple)
+        self.bulk_actions_button.setVisible(multiple)
+        if multiple:
+            self.card_preview.clear()
+        else:
+            self._update_card_preview(self.card_list.currentItem())
+
+    @staticmethod
+    def _card_ids(cards: list[Card]) -> list[int]:
+        return [card.id for card in cards if card.id is not None]
+
+    def _bulk_set_favorite(self, favorite: bool) -> None:
+        cards = self._selected_cards()
+        card_ids = self._card_ids(cards)
+        if not card_ids:
+            return
+        self.restore_pin_cycle(show_message=False)
+        changed = self.store.update_many_favorite(card_ids, favorite)
+        for card in cards:
+            card.favorite = favorite
+            pin = self.pins.get(card.id) if card.id is not None else None
+            if pin is not None:
+                pin.card.favorite = favorite
+        self.refresh_cards()
+        verb = "Added" if favorite else "Removed"
+        destination = "to favorites" if favorite else "from favorites"
+        self.statusBar().showMessage(f"{verb} {changed} card(s) {destination}", 3000)
+
+    def _bulk_set_pinned(self, pinned: bool) -> None:
+        cards = self._selected_cards()
+        card_ids = self._card_ids(cards)
+        if not card_ids:
+            return
+        self.restore_pin_cycle(show_message=False)
+        if pinned:
+            self.pin_visibility.manual_show()
+            self._auto_hidden_pin_ids.clear()
+        else:
+            for card_id in card_ids:
+                pin = self.pins.get(card_id)
+                if pin is not None:
+                    pin.save_now()
+        changed = self.store.update_many_pinned(card_ids, pinned)
+        for card in cards:
+            if card.id is None:
+                continue
+            card.pinned = pinned
+            if pinned:
+                self.show_pin(card, persist=False)
+                continue
+            pin = self.pins.pop(card.id, None)
+            if pin is not None:
+                pin.close()
+                pin.deleteLater()
+        self.refresh_cards()
+        verb = "Pinned" if pinned else "Unpinned"
+        self.statusBar().showMessage(f"{verb} {changed} card(s)", 3000)
+
+    def _bulk_organize_selected(self, _checked: bool = False) -> None:
+        cards = self._selected_cards()
+        card_ids = self._card_ids(cards)
+        if not card_ids:
+            return
+        games = sorted(
+            {card.game for card in self.store.list() if card.game.strip()},
+            key=str.casefold,
+        )
+        dialog = BulkCardDialog(len(cards), games, self)
+        if not dialog.exec():
+            return
+        changes = dialog.values()
+        moved = 0
+        retagged = 0
+        if changes.game is not None:
+            moved = self.store.update_many_game(card_ids, changes.game)
+        if changes.add_tags or changes.remove_tags:
+            retagged = self.store.update_many_tags(
+                card_ids,
+                add=changes.add_tags,
+                remove=changes.remove_tags,
+            )
+        for card_id in card_ids:
+            updated = self.store.get(card_id)
+            pin = self.pins.get(card_id)
+            if updated is not None and pin is not None:
+                pin.card.game = updated.game
+                pin.card.tags = updated.tags
+        if changes.game is not None and self.auto_profiles.isChecked() and self._focused_game:
+            self._show_profile_workspace(self._focused_game)
+        self.refresh_cards()
+        details = []
+        if changes.game is not None:
+            details.append(f"moved {moved}")
+        if changes.add_tags or changes.remove_tags:
+            details.append(f"updated tags on {retagged}")
+        self.statusBar().showMessage("Selected cards organized · " + " · ".join(details), 3500)
+
+    def _bulk_move_to_trash(self, _checked: bool = False) -> None:
+        cards = self._selected_cards()
+        card_ids = self._card_ids(cards)
+        if not card_ids:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Move selected cards to trash?",
+            f"Move {len(card_ids)} selected cards to Recently Deleted?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.restore_pin_cycle(show_message=False)
+        for card_id in card_ids:
+            pin = self.pins.get(card_id)
+            if pin is not None:
+                pin.save_now()
+        moved = self.store.move_many_to_trash(card_ids)
+        for card_id in card_ids:
+            pin = self.pins.pop(card_id, None)
+            if pin is not None:
+                pin.close()
+                pin.deleteLater()
+        self._hide_undo()
+        self.refresh_cards()
+        self.statusBar().showMessage(
+            f"Moved {moved} card(s) to Recently Deleted",
+            3500,
+        )
+
     def _pin_selected(self, item: QListWidgetItem) -> None:
         card = self.store.get(int(item.data(Qt.ItemDataRole.UserRole)))
         if card is not None:
@@ -1976,7 +2182,26 @@ class Dashboard(QMainWindow):
         item = self.card_list.itemAt(position)  # type: ignore[arg-type]
         if item is None:
             return
-        self.card_list.setCurrentItem(item)
+        if not item.isSelected():
+            self.card_list.clearSelection()
+            item.setSelected(True)
+        self.card_list.setCurrentItem(
+            item,
+            QItemSelectionModel.SelectionFlag.NoUpdate,
+        )
+        if len(self.card_list.selectedItems()) > 1:
+            menu = QMenu(self)
+            menu.addAction(self.bulk_pin_action)
+            menu.addAction(self.bulk_unpin_action)
+            menu.addSeparator()
+            menu.addAction(self.bulk_favorite_action)
+            menu.addAction(self.bulk_unfavorite_action)
+            menu.addSeparator()
+            menu.addAction(self.bulk_organize_action)
+            menu.addSeparator()
+            menu.addAction(self.bulk_trash_action)
+            menu.exec(self.card_list.mapToGlobal(position))  # type: ignore[arg-type]
+            return
         card = self._selected_card()
         if card is None:
             return

@@ -311,6 +311,9 @@ class CardStore:
         self._connection.commit()
         return cursor.rowcount > 0
 
+    def update_many_favorite(self, card_ids: Sequence[int], favorite: bool) -> int:
+        return self._update_many_flag(card_ids, "favorite", favorite)
+
     def update_pinned(self, card_id: int, pinned: bool) -> bool:
         cursor = self._connection.execute(
             "UPDATE cards SET pinned = ?, updated_at = ? WHERE id = ? AND deleted_at = ''",
@@ -318,6 +321,105 @@ class CardStore:
         )
         self._connection.commit()
         return cursor.rowcount > 0
+
+    def update_many_pinned(self, card_ids: Sequence[int], pinned: bool) -> int:
+        return self._update_many_flag(card_ids, "pinned", pinned)
+
+    def update_many_game(self, card_ids: Sequence[int], game: str) -> int:
+        normalized_game = game.strip() or "General"
+        timestamp = utc_now()
+        before = self._connection.total_changes
+        self._connection.executemany(
+            """
+            UPDATE cards
+            SET game = ?, updated_at = ?
+            WHERE id = ? AND deleted_at = '' AND game != ?
+            """,
+            (
+                (normalized_game, timestamp, card_id, normalized_game)
+                for card_id in self._unique_card_ids(card_ids)
+            ),
+        )
+        self._connection.commit()
+        return self._connection.total_changes - before
+
+    def update_many_tags(
+        self,
+        card_ids: Sequence[int],
+        *,
+        add: Sequence[str] = (),
+        remove: Sequence[str] = (),
+    ) -> int:
+        additions = normalize_tags(add)
+        removals = {tag.casefold() for tag in normalize_tags(remove)}
+        changed = 0
+        timestamp = utc_now()
+        for card_id in self._unique_card_ids(card_ids):
+            row = self._connection.execute(
+                "SELECT 1 FROM cards WHERE id = ? AND deleted_at = ''",
+                (card_id,),
+            ).fetchone()
+            if row is None:
+                continue
+            existing = self._tags_for_card(card_id)
+            retained = [tag for tag in existing if tag.casefold() not in removals]
+            updated = normalize_tags((*retained, *additions))
+            if updated == existing:
+                continue
+            self._replace_tags(card_id, updated)
+            self._connection.execute(
+                "UPDATE cards SET updated_at = ? WHERE id = ?",
+                (timestamp, card_id),
+            )
+            changed += 1
+        self._connection.commit()
+        return changed
+
+    def move_many_to_trash(self, card_ids: Sequence[int]) -> int:
+        timestamp = utc_now()
+        before = self._connection.total_changes
+        self._connection.executemany(
+            """
+            UPDATE cards
+            SET pinned = 0, deleted_at = ?, updated_at = ?
+            WHERE id = ? AND deleted_at = ''
+            """,
+            (
+                (timestamp, timestamp, card_id)
+                for card_id in self._unique_card_ids(card_ids)
+            ),
+        )
+        self._connection.commit()
+        return self._connection.total_changes - before
+
+    def _update_many_flag(
+        self,
+        card_ids: Sequence[int],
+        column: str,
+        enabled: bool,
+    ) -> int:
+        if column not in {"favorite", "pinned"}:
+            raise ValueError("Unsupported card flag.")
+        value = int(enabled)
+        timestamp = utc_now()
+        before = self._connection.total_changes
+        self._connection.executemany(
+            f"""
+            UPDATE cards
+            SET {column} = ?, updated_at = ?
+            WHERE id = ? AND deleted_at = '' AND {column} != ?
+            """,
+            (
+                (value, timestamp, card_id, value)
+                for card_id in self._unique_card_ids(card_ids)
+            ),
+        )
+        self._connection.commit()
+        return self._connection.total_changes - before
+
+    @staticmethod
+    def _unique_card_ids(card_ids: Sequence[int]) -> tuple[int, ...]:
+        return tuple(dict.fromkeys(card_id for card_id in card_ids if card_id > 0))
 
     def update_locked(self, card_id: int, locked: bool) -> bool:
         cursor = self._connection.execute(

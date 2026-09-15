@@ -40,6 +40,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Add reusable tags such as map, boss, code, build, or puzzle to saved cards
 - Search saved cards by title, note text, extracted screenshot text, tag, or game
 - Filter the library by tag, card type, pinned state, favorites, or current game
+- Select multiple library cards to pin, favorite, organize, retag, or delete them together
 - Preview images and notes directly from the library with quick card actions
 - Find and show any saved card from a keyboard-first in-game search overlay
 - Cycle through one pinned card at a time with favorites first and restore the prior layout
@@ -155,6 +156,8 @@ a `.sha256` file so the installer can be checked before it is run.
     global shortcuts in one place. Changes are applied only after choosing **Save**.
 17. Choose **Edit** on a card to add comma-separated tags such as `map`, `boss`, or
     `build`. Open **Filters** to combine tag, type, pinned, favorite, and game filters.
+    Use `Ctrl+Click`, `Shift+Click`, or `Ctrl+A` in the library to select multiple cards,
+    then open **Bulk actions** to update them together.
 18. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
     **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
 19. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
@@ -193,6 +196,7 @@ gaming-buddy/
 │   ├── card_preview.py # Library image, note, and metadata preview panel
 │   ├── capture.py      # Screen-region capture
 │   ├── card_editor.py  # Saved-card editor
+│   ├── bulk_card_dialog.py # Multi-card game and tag changes
 │   ├── pin.py          # Movable overlay cards
 │   ├── focus_mode.py   # Temporary distraction-free presentation state
 │   ├── pin_cycle.py    # Single-pin cycling and visibility restoration
