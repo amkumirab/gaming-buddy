@@ -57,6 +57,7 @@ from gaming_buddy import __version__
 from gaming_buddy.bulk_card_dialog import BulkCardDialog
 from gaming_buddy.capture import SelectionOverlay, begin_capture
 from gaming_buddy.card_editor import CardEditor
+from gaming_buddy.card_export import CardExportError, create_card_export
 from gaming_buddy.card_preview import CardPreviewPanel
 from gaming_buddy.focus_mode import FocusModeState, PinPresentation
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
@@ -457,6 +458,9 @@ class Dashboard(QMainWindow):
         self.bulk_actions_menu.addSeparator()
         self.bulk_organize_action = self.bulk_actions_menu.addAction("Organize selected…")
         self.bulk_organize_action.triggered.connect(self._bulk_organize_selected)
+        self.bulk_actions_menu.addSeparator()
+        self.bulk_export_action = self.bulk_actions_menu.addAction("Export selected…")
+        self.bulk_export_action.triggered.connect(self._export_selected_cards)
         self.bulk_actions_menu.addSeparator()
         self.bulk_trash_action = self.bulk_actions_menu.addAction("Move selected to trash")
         self.bulk_trash_action.triggered.connect(self._bulk_move_to_trash)
@@ -2173,6 +2177,47 @@ class Dashboard(QMainWindow):
             3500,
         )
 
+    def _export_selected_cards(self, _checked: bool = False) -> None:
+        self._export_cards(self._selected_cards())
+
+    def _export_cards(self, cards: list[Card]) -> None:
+        if not cards:
+            return
+        timestamp = datetime.now(UTC).astimezone().strftime("%Y%m%d")
+        default_name = (
+            Path.home() / "Documents" / f"Gaming-Buddy-card-export-{timestamp}.zip"
+        )
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export selected cards",
+            str(default_name),
+            "ZIP archive (*.zip)",
+        )
+        if not filename:
+            return
+        destination = Path(filename)
+        if destination.suffix.casefold() != ".zip":
+            destination = destination.with_suffix(".zip")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            summary = create_card_export(destination, cards)
+        except (CardExportError, OSError) as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        missing = (
+            f"\nUnavailable images: {summary.missing_image_count}"
+            if summary.missing_image_count
+            else ""
+        )
+        QMessageBox.information(
+            self,
+            "Export complete",
+            f"Exported {summary.card_count} card(s) and {summary.image_count} image(s) to:\n"
+            f"{destination}{missing}",
+        )
+
     def _pin_selected(self, item: QListWidgetItem) -> None:
         card = self.store.get(int(item.data(Qt.ItemDataRole.UserRole)))
         if card is not None:
@@ -2198,6 +2243,8 @@ class Dashboard(QMainWindow):
             menu.addAction(self.bulk_unfavorite_action)
             menu.addSeparator()
             menu.addAction(self.bulk_organize_action)
+            menu.addSeparator()
+            menu.addAction(self.bulk_export_action)
             menu.addSeparator()
             menu.addAction(self.bulk_trash_action)
             menu.exec(self.card_list.mapToGlobal(position))  # type: ignore[arg-type]
@@ -2233,6 +2280,8 @@ class Dashboard(QMainWindow):
         )
         menu.addSeparator()
         pin_action = menu.addAction("Unpin card" if card.pinned else "Pin card")
+        export_action = menu.addAction("Export card…")
+        menu.addSeparator()
         delete_action = menu.addAction("Move to trash")
         action = menu.exec(self.card_list.mapToGlobal(position))  # type: ignore[arg-type]
         if action is edit_action:
@@ -2268,6 +2317,8 @@ class Dashboard(QMainWindow):
                 self._unpin_card(card)
             else:
                 self._pin_selected(item)
+        elif action is export_action:
+            self._export_cards([card])
         elif action is delete_action:
             self._delete_card(card)
 

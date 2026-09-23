@@ -41,6 +41,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Search saved cards by title, note text, extracted screenshot text, tag, or game
 - Filter the library by tag, card type, pinned state, favorites, or current game
 - Select multiple library cards to pin, favorite, organize, retag, or delete them together
+- Export selected cards as a portable ZIP with original images, a readable index, and metadata
 - Preview images and notes directly from the library with quick card actions
 - Find and show any saved card from a keyboard-first in-game search overlay
 - Cycle through one pinned card at a time with favorites first and restore the prior layout
@@ -158,26 +159,29 @@ a `.sha256` file so the installer can be checked before it is run.
     `build`. Open **Filters** to combine tag, type, pinned, favorite, and game filters.
     Use `Ctrl+Click`, `Shift+Click`, or `Ctrl+A` in the library to select multiple cards,
     then open **Bulk actions** to update them together.
-18. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
+18. Select one or more library cards and choose **Export card…** or **Export selected…** to
+    create a portable ZIP containing original-resolution images, a readable Markdown index,
+    and structured metadata. Missing image files are reported without dropping their cards.
+19. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
     **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
-19. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
-20. Open a game, return with the panel shortcut, enter its name, and choose
+20. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
+21. Open a game, return with the panel shortcut, enter its name, and choose
     **Link detected app**. Enable **Auto-switch game profiles** to switch automatically.
-21. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
+22. Enable **Hide pins when a linked game loses focus** to keep overlays off other apps.
     Manual **Hide all pins** remains in effect when you return to the game.
-22. Choose **Layouts…** to save the current pins, positions, sizes, visibility, opacity,
+23. Choose **Layouts…** to save the current pins, positions, sizes, visibility, opacity,
     collapsed state, and lock state as a named layout for the current game. Applying a layout
     reuses the existing cards, and the active layout returns with that game profile.
-23. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
+24. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
     and merge cards, images, settings, and named layouts without deleting the current library.
-24. Choose **Updates** in the panel or **Check for updates…** in the tray. When a newer
+25. Choose **Updates** in the panel or **Check for updates…** in the tray. When a newer
     GitHub Release is available, review its notes and choose **Download and install**. Gaming
     Buddy verifies the published SHA-256 checksum and asks again before starting the Installer.
-25. Toggle **Check for updates automatically** in the tray. Automatic checks run no more than
+26. Toggle **Check for updates automatically** in the tray. Automatic checks run no more than
     once per day, never download in the background, and only show a notification when a newer
     release exists.
-26. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
-27. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
+27. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+28. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 
 Captured images and the SQLite database are stored under:
@@ -197,6 +201,7 @@ gaming-buddy/
 │   ├── capture.py      # Screen-region capture
 │   ├── card_editor.py  # Saved-card editor
 │   ├── bulk_card_dialog.py # Multi-card game and tag changes
+│   ├── card_export.py   # Portable selected-card ZIP exports
 │   ├── pin.py          # Movable overlay cards
 │   ├── focus_mode.py   # Temporary distraction-free presentation state
 │   ├── pin_cycle.py    # Single-pin cycling and visibility restoration
@@ -249,6 +254,8 @@ gaming-buddy/
 - Focus-aware pin hiding is disabled by default and works only with locally linked games.
 - Launch at sign-in is optional and uses the current user's Windows startup entry.
 - Backups are written only to the location selected by the user and are never uploaded.
+- Card exports are written only to the selected location and omit local database IDs and source
+  file paths. Their Markdown and JSON contents may include the selected notes and extracted text.
 - Backup ZIP files are not encrypted, so they should be stored in a trusted location.
 - Optional update checks contact only the project's GitHub Releases API. They can be disabled
   from the tray menu.
