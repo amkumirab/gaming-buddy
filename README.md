@@ -22,6 +22,8 @@ game window. The prototype is designed for quick interaction and stores its data
 ## Prototype features
 
 - Capture a region at the monitor's native pixel resolution and pin it above the game
+- Choose whether captures are pinned, saved quietly, or reviewed before saving
+- Delay area selection by 3 or 5 seconds and return directly to the game after capture
 - Import PNG, JPEG, BMP, and WebP images by file picker, drag and drop, or clipboard paste
 - Preserve imported files at their original quality and skip duplicate image content
 - Annotate screenshots with a pen, arrows, rectangles, text, and a pixel-restoring eraser
@@ -128,7 +130,10 @@ a `.sha256` file so the installer can be checked before it is run.
 2. Write a note and choose **Save** or **Pin note**.
    Unfinished text is saved locally after a short pause and restored the next time the app
    starts. Choose **Discard draft** to remove it without creating a card.
-3. Choose **Capture area**, drag around a clue or map, and release.
+3. Choose **Capture area**, drag around a clue or map, and release. Open the **Capture** tab in
+   Settings to save and pin immediately, save quietly to the library, or review each capture.
+   You can also add a 3- or 5-second delay, keep the panel hidden afterward, and control system
+   notifications. Cancelling restores the panel only when it was visible before capture started.
 4. Choose **Import image…**, drag image files onto the panel, or paste an image with `Ctrl+V`.
    Select **Save** or **Save and pin** after checking the preview.
 5. Right-click an image card or pin and choose **Annotate image…**. Mark it with a pen,
@@ -199,6 +204,7 @@ gaming-buddy/
 │   ├── dashboard.py    # Main control panel
 │   ├── card_preview.py # Library image, note, and metadata preview panel
 │   ├── capture.py      # Screen-region capture
+│   ├── capture_workflow.py # Capture behavior and delay preferences
 │   ├── card_editor.py  # Saved-card editor
 │   ├── bulk_card_dialog.py # Multi-card game and tag changes
 │   ├── card_export.py   # Portable selected-card ZIP exports
@@ -247,6 +253,8 @@ gaming-buddy/
   are not uploaded for recognition.
 - The prototype does not require an account or cloud connection.
 - Captures are created only after the user activates the capture shortcut.
+- Delayed captures wait locally before showing the selection overlay; they do not record the
+  screen during the countdown.
 - Imported images are copied into the local capture library only after confirmation.
 - Screenshot annotations are saved as new local PNG files; the source image is unchanged.
 - Active-game detection reads only the foreground window title, process ID, and executable name.

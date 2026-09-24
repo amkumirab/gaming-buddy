@@ -7,6 +7,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QLineEdit
 
+from gaming_buddy.capture_workflow import (
+    DEFAULT_CAPTURE_ACTION,
+    DEFAULT_CAPTURE_DELAY_SECONDS,
+    DEFAULT_CAPTURE_NOTIFICATIONS,
+    DEFAULT_KEEP_PANEL_HIDDEN,
+    CaptureAction,
+)
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS
 from gaming_buddy.settings_dialog import (
     DEFAULT_FOCUS_OPACITY,
@@ -34,6 +41,10 @@ def _snapshot() -> SettingsSnapshot:
         click_through_pins=True,
         default_pin_opacity=81,
         focus_opacity=64,
+        capture_action=CaptureAction.REVIEW,
+        capture_delay_seconds=3,
+        capture_keep_panel_hidden=False,
+        capture_notifications=False,
         shortcuts=DEFAULT_SHORTCUTS.copy(),
     )
 
@@ -75,6 +86,10 @@ def test_restore_defaults_updates_controls_without_accepting(
     assert values.click_through_pins is False
     assert values.default_pin_opacity == DEFAULT_PIN_OPACITY
     assert values.focus_opacity == DEFAULT_FOCUS_OPACITY
+    assert values.capture_action is DEFAULT_CAPTURE_ACTION
+    assert values.capture_delay_seconds == DEFAULT_CAPTURE_DELAY_SECONDS
+    assert values.capture_keep_panel_hidden is DEFAULT_KEEP_PANEL_HIDDEN
+    assert values.capture_notifications is DEFAULT_CAPTURE_NOTIFICATIONS
     assert values.shortcuts == DEFAULT_SHORTCUTS
     assert dialog.result() == 0
 

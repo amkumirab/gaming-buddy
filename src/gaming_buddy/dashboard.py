@@ -56,6 +56,14 @@ from PySide6.QtWidgets import (
 from gaming_buddy import __version__
 from gaming_buddy.bulk_card_dialog import BulkCardDialog
 from gaming_buddy.capture import SelectionOverlay, begin_capture
+from gaming_buddy.capture_workflow import (
+    DEFAULT_CAPTURE_NOTIFICATIONS,
+    DEFAULT_KEEP_PANEL_HIDDEN,
+    CaptureAction,
+    capture_start_delay_ms,
+    normalize_capture_action,
+    normalize_capture_delay,
+)
 from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.card_export import CardExportError, create_card_export
 from gaming_buddy.card_preview import CardPreviewPanel
@@ -154,6 +162,8 @@ class Dashboard(QMainWindow):
             self._restore_pins_after_auto_hide
         )
         self.capture_overlay: SelectionOverlay | None = None
+        self._capture_in_progress = False
+        self._capture_panel_was_visible = False
         self._really_quit = False
         self._last_deleted_card_id: int | None = None
         self.update_controller = UpdateController(self)
@@ -696,6 +706,22 @@ class Dashboard(QMainWindow):
             click_through_pins=self.click_through.isChecked(),
             default_pin_opacity=self.opacity_slider.value(),
             focus_opacity=self.focus_opacity_slider.value(),
+            capture_action=normalize_capture_action(
+                self.settings.value("capture/action", CaptureAction.SAVE_AND_PIN.value)
+            ),
+            capture_delay_seconds=normalize_capture_delay(
+                self.settings.value("capture/delay_seconds", 0)
+            ),
+            capture_keep_panel_hidden=self.settings.value(
+                "capture/keep_panel_hidden",
+                DEFAULT_KEEP_PANEL_HIDDEN,
+                type=bool,
+            ),
+            capture_notifications=self.settings.value(
+                "capture/notifications",
+                DEFAULT_CAPTURE_NOTIFICATIONS,
+                type=bool,
+            ),
             shortcuts=self.shortcuts.copy(),
         )
         self.shortcut_editing_started.emit()
@@ -721,6 +747,13 @@ class Dashboard(QMainWindow):
         self.auto_profiles.setChecked(updated.auto_switch_profiles)
         self.auto_hide_pins.setChecked(updated.auto_hide_pins)
         self.auto_update_checks_action.setChecked(updated.automatic_update_checks)
+        self.settings.setValue("capture/action", updated.capture_action.value)
+        self.settings.setValue("capture/delay_seconds", updated.capture_delay_seconds)
+        self.settings.setValue(
+            "capture/keep_panel_hidden",
+            updated.capture_keep_panel_hidden,
+        )
+        self.settings.setValue("capture/notifications", updated.capture_notifications)
         if updated.launch_at_sign_in != current_startup:
             self.set_launch_at_sign_in(updated.launch_at_sign_in)
         self.settings.sync()
@@ -1303,26 +1336,64 @@ class Dashboard(QMainWindow):
         self.show_pin(card)
         self.refresh_cards()
 
-    def start_capture(self) -> None:
+    def start_capture(self, _checked: bool = False) -> None:
+        if self._capture_in_progress:
+            self.statusBar().showMessage("A capture is already in progress", 2500)
+            return
+        self._capture_in_progress = True
+        self._capture_panel_was_visible = self.isVisible()
         self.hide()
-        QTimer.singleShot(180, self._open_capture_overlay)
+        delay_seconds = normalize_capture_delay(
+            self.settings.value("capture/delay_seconds", 0)
+        )
+        if delay_seconds and self.settings.value(
+            "capture/notifications",
+            DEFAULT_CAPTURE_NOTIFICATIONS,
+            type=bool,
+        ):
+            self.tray.showMessage(
+                "Capture scheduled",
+                f"Area selection starts in {delay_seconds} seconds.",
+                QSystemTrayIcon.MessageIcon.Information,
+                min(4000, delay_seconds * 1000),
+            )
+        QTimer.singleShot(capture_start_delay_ms(delay_seconds), self._open_capture_overlay)
 
     def _open_capture_overlay(self) -> None:
         try:
             self.capture_overlay = begin_capture()
             self.capture_overlay.selected.connect(self._save_capture)
-            self.capture_overlay.cancelled.connect(self.show_panel)
+            self.capture_overlay.cancelled.connect(self._capture_cancelled)
         except RuntimeError as exc:
+            self._capture_in_progress = False
+            self.capture_overlay = None
             self.show_panel()
             QMessageBox.warning(self, "Capture failed", str(exc))
 
     def _save_capture(self, image: QImage) -> None:
+        pin_capture = True
+        action = normalize_capture_action(
+            self.settings.value("capture/action", CaptureAction.SAVE_AND_PIN.value)
+        )
+        if action is CaptureAction.SAVE_ONLY:
+            pin_capture = False
+        elif action is CaptureAction.REVIEW:
+            reviewed = self._review_capture(image)
+            if reviewed is None:
+                self._capture_cancelled()
+                return
+            pin_capture = reviewed
+
         now = datetime.now(UTC).astimezone()
         timestamp = now.strftime("%Y%m%d-%H%M%S-%f")
         path = self.captures_dir / f"capture-{timestamp}.png"
+        try:
+            self.captures_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self._capture_failed(f"Could not prepare the capture folder: {exc}")
+            return
         if not image.save(str(path), "PNG", 100):
-            self.show_panel()
-            QMessageBox.warning(self, "Capture failed", "Could not save the selected image.")
+            self._capture_failed("Could not save the selected image.")
             return
         game = self.game_input.text().strip() or "General"
         card = Card(
@@ -1335,13 +1406,79 @@ class Dashboard(QMainWindow):
             width=max(240, min(520, image.width())),
             height=max(150, min(380, image.height() + 45)),
         )
-        self.store.add(card)
-        self.show_pin(card)
+        try:
+            self.store.add(card)
+        except sqlite3.Error as exc:
+            path.unlink(missing_ok=True)
+            self._capture_failed(f"Could not add the screenshot to the library: {exc}")
+            return
+        if pin_capture:
+            self.show_pin(card)
         self.refresh_cards()
-        self.show_panel()
-        self.statusBar().showMessage(
-            f"Saved lossless PNG · {image.width()} × {image.height()} px", 3500
+        self._capture_in_progress = False
+        self.capture_overlay = None
+        keep_hidden = self.settings.value(
+            "capture/keep_panel_hidden",
+            DEFAULT_KEEP_PANEL_HIDDEN,
+            type=bool,
         )
+        if keep_hidden:
+            self.hide()
+        else:
+            self.show_panel()
+        action_text = "Saved and pinned" if pin_capture else "Saved to the library"
+        message = f"{action_text} · {image.width()} × {image.height()} px · lossless PNG"
+        self.statusBar().showMessage(message, 3500)
+        if self.settings.value(
+            "capture/notifications",
+            DEFAULT_CAPTURE_NOTIFICATIONS,
+            type=bool,
+        ):
+            self.tray.showMessage(
+                "Screenshot captured",
+                f"{message}\nGame: {game}",
+                QSystemTrayIcon.MessageIcon.Information,
+                3500,
+            )
+
+    def _review_capture(self, image: QImage) -> bool | None:
+        self.show_panel()
+        box = QMessageBox(self)
+        box.setWindowTitle("Review capture")
+        box.setIconPixmap(
+            QPixmap.fromImage(image).scaled(
+                320,
+                220,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        box.setText(f"{image.width()} × {image.height()} px")
+        box.setInformativeText("Save this screenshot to the library or pin it immediately?")
+        pin_button = box.addButton("Save and pin", QMessageBox.ButtonRole.AcceptRole)
+        save_button = box.addButton("Save only", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Discard", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is pin_button:
+            return True
+        if clicked is save_button:
+            return False
+        return None
+
+    def _capture_cancelled(self) -> None:
+        self._capture_in_progress = False
+        self.capture_overlay = None
+        if self._capture_panel_was_visible:
+            self.show_panel()
+        else:
+            self.hide()
+
+    def _capture_failed(self, message: str) -> None:
+        self._capture_in_progress = False
+        self.capture_overlay = None
+        self.show_panel()
+        QMessageBox.warning(self, "Capture failed", message)
 
     def choose_image_files(self, _checked: bool = False) -> None:
         filenames, _ = QFileDialog.getOpenFileNames(

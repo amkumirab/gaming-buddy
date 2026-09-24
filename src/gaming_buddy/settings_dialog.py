@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -23,6 +24,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gaming_buddy.capture_workflow import (
+    CAPTURE_DELAY_OPTIONS,
+    DEFAULT_CAPTURE_ACTION,
+    DEFAULT_CAPTURE_DELAY_SECONDS,
+    DEFAULT_CAPTURE_NOTIFICATIONS,
+    DEFAULT_KEEP_PANEL_HIDDEN,
+    CaptureAction,
+    normalize_capture_action,
+    normalize_capture_delay,
+)
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, SHORTCUT_LABELS, validate_shortcuts
 
 DEFAULT_PIN_OPACITY = 88
@@ -38,6 +49,10 @@ class SettingsSnapshot:
     click_through_pins: bool
     default_pin_opacity: int
     focus_opacity: int
+    capture_action: CaptureAction
+    capture_delay_seconds: int
+    capture_keep_panel_hidden: bool
+    capture_notifications: bool
     shortcuts: dict[str, str]
 
 
@@ -64,6 +79,7 @@ class SettingsDialog(QDialog):
 
         tabs = QTabWidget()
         tabs.addTab(self._build_general_tab(values, startup_supported), "General")
+        tabs.addTab(self._build_capture_tab(values), "Capture")
         tabs.addTab(self._build_overlay_tab(values), "Overlay")
         tabs.addTab(self._build_profiles_tab(values), "Game profiles")
         tabs.addTab(self._build_shortcuts_tab(values.shortcuts), "Shortcuts")
@@ -102,6 +118,49 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.launch_at_sign_in)
         layout.addWidget(self.automatic_update_checks)
         layout.addWidget(update_note)
+        layout.addStretch(1)
+        return tab
+
+    def _build_capture_tab(self, values: SettingsSnapshot) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        form = QFormLayout()
+        self.capture_action = QComboBox()
+        self.capture_action.addItem("Save and pin immediately", CaptureAction.SAVE_AND_PIN)
+        self.capture_action.addItem("Save to the library only", CaptureAction.SAVE_ONLY)
+        self.capture_action.addItem("Review after every capture", CaptureAction.REVIEW)
+        action_index = self.capture_action.findData(normalize_capture_action(values.capture_action))
+        self.capture_action.setCurrentIndex(max(0, action_index))
+        form.addRow("After selecting an area", self.capture_action)
+
+        self.capture_delay = QComboBox()
+        for seconds in CAPTURE_DELAY_OPTIONS:
+            label = "No delay" if seconds == 0 else f"{seconds} seconds"
+            self.capture_delay.addItem(label, seconds)
+        delay_index = self.capture_delay.findData(
+            normalize_capture_delay(values.capture_delay_seconds)
+        )
+        self.capture_delay.setCurrentIndex(max(0, delay_index))
+        form.addRow("Start capture after", self.capture_delay)
+        layout.addLayout(form)
+
+        self.capture_keep_panel_hidden = QCheckBox(
+            "Keep the control panel hidden after a successful capture"
+        )
+        self.capture_keep_panel_hidden.setChecked(values.capture_keep_panel_hidden)
+        self.capture_notifications = QCheckBox("Show a system notification after saving")
+        self.capture_notifications.setChecked(values.capture_notifications)
+        layout.addWidget(self.capture_keep_panel_hidden)
+        layout.addWidget(self.capture_notifications)
+
+        note = QLabel(
+            "A short delay helps capture temporary menus. Cancelling restores the panel only "
+            "when it was visible before capture started."
+        )
+        note.setObjectName("muted")
+        note.setWordWrap(True)
+        layout.addWidget(note)
         layout.addStretch(1)
         return tab
 
@@ -235,6 +294,10 @@ class SettingsDialog(QDialog):
             click_through_pins=self.click_through_pins.isChecked(),
             default_pin_opacity=self.default_pin_opacity[1].value(),
             focus_opacity=self.focus_opacity[1].value(),
+            capture_action=normalize_capture_action(self.capture_action.currentData()),
+            capture_delay_seconds=normalize_capture_delay(self.capture_delay.currentData()),
+            capture_keep_panel_hidden=self.capture_keep_panel_hidden.isChecked(),
+            capture_notifications=self.capture_notifications.isChecked(),
             shortcuts=validate_shortcuts(shortcuts),
         )
 
@@ -254,6 +317,14 @@ class SettingsDialog(QDialog):
         self.click_through_pins.setChecked(False)
         self.default_pin_opacity[1].setValue(DEFAULT_PIN_OPACITY)
         self.focus_opacity[1].setValue(DEFAULT_FOCUS_OPACITY)
+        self.capture_action.setCurrentIndex(
+            self.capture_action.findData(DEFAULT_CAPTURE_ACTION)
+        )
+        self.capture_delay.setCurrentIndex(
+            self.capture_delay.findData(DEFAULT_CAPTURE_DELAY_SECONDS)
+        )
+        self.capture_keep_panel_hidden.setChecked(DEFAULT_KEEP_PANEL_HIDDEN)
+        self.capture_notifications.setChecked(DEFAULT_CAPTURE_NOTIFICATIONS)
         self._restore_shortcut_defaults()
 
     def _restore_shortcut_defaults(self) -> None:
