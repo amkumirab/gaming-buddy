@@ -43,9 +43,9 @@ class CardEditor(QDialog):
         form.addRow("Game", self.game_input)
         form.addRow("Tags", self.tags_input)
 
-        self.content_input: QTextEdit | None = None
+        self.content_input = QTextEdit()
+        self.content_input.setPlainText(card.content)
         if card.kind is CardKind.NOTE:
-            self.content_input = QTextEdit(card.content)
             self.content_input.setMinimumHeight(150)
             form.addRow("Note", self.content_input)
         else:
@@ -53,7 +53,6 @@ class CardEditor(QDialog):
             file_label = QLabel(filename)
             file_label.setObjectName("muted")
             form.addRow("File", file_label)
-            self.content_input = QTextEdit(card.content)
             self.content_input.setMinimumHeight(130)
             self.content_input.setPlaceholderText(
                 "Extracted screenshot text can be reviewed and corrected here."
@@ -69,11 +68,7 @@ class CardEditor(QDialog):
         layout.addWidget(buttons)
 
     def values(self) -> tuple[str, str, str]:
-        content = (
-            self.content_input.toPlainText()
-            if self.content_input is not None
-            else self.card.content
-        )
+        content = self.content_input.toPlainText()
         return self.title_input.text().strip(), self.game_input.text().strip(), content
 
     def tags(self) -> tuple[str, ...]:
@@ -87,7 +82,6 @@ class CardEditor(QDialog):
             return
         if self.card.kind is CardKind.NOTE and not content.strip():
             QMessageBox.warning(self, "Note required", "The note cannot be empty.")
-            assert self.content_input is not None
             self.content_input.setFocus()
             return
         if not game:
