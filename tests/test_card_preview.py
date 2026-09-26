@@ -97,6 +97,20 @@ def test_note_card_uses_full_text_preview(application: QApplication) -> None:
     panel.close()
 
 
+def test_note_card_renders_markdown_without_changing_card_content(
+    application: QApplication,
+) -> None:
+    source = "# Build order\n\n1. Find **Vigor**\n2. Keep `medium load`"
+    card = Card(2, CardKind.NOTE, "Elden Ring", "Build", content=source)
+    panel = CardPreviewPanel()
+
+    panel.set_card(card)
+
+    assert panel.content.toPlainText() == "Build order\nFind Vigor\nKeep medium load"
+    assert card.content == source
+    panel.close()
+
+
 def test_preview_actions_emit_the_selected_card(
     application: QApplication,
     tmp_path: Path,

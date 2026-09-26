@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from gaming_buddy.markdown_view import MarkdownPreview
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.pin import PinWidget
 
@@ -145,4 +146,16 @@ def test_cycle_position_is_visible_in_collapsed_pin_header(
 
     pin.set_cycle_position(None)
     assert pin._cycle_indicator.isHidden()
+    pin.close()
+
+
+def test_note_pin_renders_markdown(application: QApplication) -> None:
+    source = "# Boss\n\n- Wait for **phase two**\n- Dodge `left`"
+    pin = _pin(Card(6, CardKind.NOTE, "General", "Boss notes", content=source), [], [])
+
+    content = pin.findChild(MarkdownPreview, "pinContent")
+
+    assert content is not None
+    assert content.toPlainText() == "Boss\nWait for phase two\nDodge left"
+    assert pin.card.content == source
     pin.close()

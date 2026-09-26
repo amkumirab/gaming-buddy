@@ -21,11 +21,11 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizeGrip,
-    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
+from gaming_buddy.markdown_view import MarkdownPreview
 from gaming_buddy.models import Card, CardKind
 
 
@@ -370,9 +370,12 @@ class PinWidget(QWidget):
             image.open_requested.connect(self._open_original)
             body_layout.addWidget(image, 1)
         else:
-            content = QTextBrowser()
-            content.setPlainText(self.card.content)
-            content.setOpenExternalLinks(True)
+            content = MarkdownPreview()
+            content.setObjectName("pinContent")
+            if self.card.kind is CardKind.NOTE:
+                content.set_markdown(self.card.content)
+            else:
+                content.setPlainText(self.card.content)
             body_layout.addWidget(content, 1)
 
         grip_row = QHBoxLayout()

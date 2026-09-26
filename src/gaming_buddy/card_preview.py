@@ -11,11 +11,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
+from gaming_buddy.markdown_view import MarkdownPreview
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.tags import format_tags
 
@@ -145,9 +145,8 @@ class CardPreviewPanel(QFrame):
         self.metadata.setWordWrap(True)
         self.content_heading = QLabel("CONTENTS")
         self.content_heading.setObjectName("section")
-        self.content = QTextBrowser()
+        self.content = MarkdownPreview()
         self.content.setObjectName("previewText")
-        self.content.setOpenExternalLinks(False)
         self.content.setMinimumHeight(140)
         self.content.hide()
         self.content_heading.hide()
@@ -213,7 +212,7 @@ class CardPreviewPanel(QFrame):
             self.image.hide()
             self.image.clear_image()
             self.content_heading.setText("NOTE")
-            self.content.setPlainText(card.content)
+            self.content.set_markdown(card.content)
             self.extract_button.hide()
             self.copy_button.setText("Copy note")
             self.copy_button.setEnabled(bool(card.content))

@@ -29,6 +29,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Annotate screenshots with a pen, arrows, rectangles, text, and a pixel-restoring eraser
 - Undo, redo, or reset edits and save the result as a new lossless copy
 - Create, save, and pin quick text notes
+- Format notes with Markdown and preview headings, lists, emphasis, quotes, and code
 - Autosave unfinished notes locally and restore them after an interrupted session
 - Move and resize every pinned card
 - Snap pins to nearby screen edges and lock their position and size
@@ -127,7 +128,8 @@ a `.sha256` file so the installer can be checked before it is run.
 ## How to use
 
 1. Enter the current game name in the top field.
-2. Write a note and choose **Save** or **Pin note**.
+2. Write a note and choose **Save** or **Pin note**. Saved notes support Markdown formatting;
+   use **Edit**, then switch from **Write** to **Preview** to check the rendered result.
    Unfinished text is saved locally after a short pause and restored the next time the app
    starts. Choose **Discard draft** to remove it without creating a card.
 3. Choose **Capture area**, drag around a clue or map, and release. Open the **Capture** tab in
@@ -206,6 +208,7 @@ gaming-buddy/
 │   ├── capture.py      # Screen-region capture
 │   ├── capture_workflow.py # Capture behavior and delay preferences
 │   ├── card_editor.py  # Saved-card editor
+│   ├── markdown_view.py # Safe shared Markdown note preview
 │   ├── bulk_card_dialog.py # Multi-card game and tag changes
 │   ├── card_export.py   # Portable selected-card ZIP exports
 │   ├── pin.py          # Movable overlay cards
@@ -243,6 +246,7 @@ gaming-buddy/
 ## Privacy and storage
 
 - Notes and captured images remain on the user's computer.
+- Markdown note previews do not automatically load linked local or remote images.
 - Unfinished quick-note drafts remain local and are removed after saving, pinning, or choosing
   **Discard draft**.
 - Deleted cards and their images remain recoverable locally for 30 days unless the recycle

@@ -59,3 +59,35 @@ def test_multiline_content_is_preserved_when_opened_and_saved(
     assert editor.content_input.toPlainText() == content
     assert editor.values() == ("Mission notes", "Control", content)
     editor.close()
+
+
+def test_note_markdown_preview_updates_without_changing_source(
+    application: QApplication,
+) -> None:
+    source = "# Boss route\n\n- Dodge left\n- Use **fire**"
+    card = Card(1, CardKind.NOTE, "Control", "Route", content=source)
+    editor = CardEditor(card)
+
+    assert editor.content_tabs is not None
+    assert editor.markdown_preview is not None
+    editor.content_tabs.setCurrentWidget(editor.markdown_preview)
+
+    assert editor.markdown_preview.toPlainText() == "Boss route\nDodge left\nUse fire"
+    assert editor.content_input.toPlainText() == source
+    assert editor.values() == ("Route", "Control", source)
+
+    editor.content_input.setPlainText("## Updated\n\n`code`")
+    assert editor.markdown_preview.toPlainText() == "Updated\ncode"
+    assert editor.values()[2] == "## Updated\n\n`code`"
+    editor.close()
+
+
+def test_image_text_editor_remains_plain_text(application: QApplication) -> None:
+    source = "# Extracted heading\n**Keep markers**"
+    card = Card(1, CardKind.IMAGE, "Control", "Clue", content=source)
+    editor = CardEditor(card)
+
+    assert editor.content_tabs is None
+    assert editor.markdown_preview is None
+    assert editor.content_input.toPlainText() == source
+    editor.close()
