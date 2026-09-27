@@ -30,6 +30,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Undo, redo, or reset edits and save the result as a new lossless copy
 - Create, save, and pin quick text notes
 - Format notes with Markdown and preview headings, lists, emphasis, quotes, and code
+- Apply common Markdown formatting from the note toolbar or keyboard shortcuts
 - Autosave unfinished notes locally and restore them after an interrupted session
 - Move and resize every pinned card
 - Snap pins to nearby screen edges and lock their position and size
@@ -129,7 +130,8 @@ a `.sha256` file so the installer can be checked before it is run.
 
 1. Enter the current game name in the top field.
 2. Write a note and choose **Save** or **Pin note**. Saved notes support Markdown formatting;
-   use **Edit**, then switch from **Write** to **Preview** to check the rendered result.
+   use **Edit** to apply formatting from the toolbar, then switch from **Write** to **Preview**
+   to check the rendered result. `Ctrl+B` and `Ctrl+I` format selected text while writing.
    Unfinished text is saved locally after a short pause and restored the next time the app
    starts. Choose **Discard draft** to remove it without creating a card.
 3. Choose **Capture area**, drag around a clue or map, and release. Open the **Capture** tab in

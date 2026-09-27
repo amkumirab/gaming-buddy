@@ -121,6 +121,26 @@ QTextBrowser#previewText {
     color: #e6e0f2;
     padding: 7px;
 }
+QToolBar#markdownToolbar {
+    background: #171321;
+    border: 1px solid #39304d;
+    border-radius: 8px;
+    padding: 3px;
+    spacing: 3px;
+}
+QToolBar#markdownToolbar QToolButton {
+    background: #29233a;
+    border: 1px solid #44395e;
+    border-radius: 6px;
+    color: #eee9ff;
+    font-weight: 600;
+    padding: 5px 8px;
+}
+QToolBar#markdownToolbar QToolButton:hover {
+    background: #3a3052;
+    border-color: #7657ff;
+}
+QToolBar#markdownToolbar QToolButton:pressed { background: #201b2e; }
 QPushButton {
     background: #29233a;
     border: 1px solid #44395e;
