@@ -1556,7 +1556,19 @@ class Dashboard(QMainWindow):
                 width=max(240, min(520, candidate.image.width())),
                 height=max(150, min(380, candidate.image.height() + 45)),
             )
-            self.store.add(card)
+            try:
+                self.store.add(card)
+            except sqlite3.Error as exc:
+                cleanup_error = ""
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError as unlink_exc:
+                    cleanup_error = f" The saved file could not be removed: {unlink_exc}"
+                failures.append(
+                    f"{candidate.source_name}: Could not add the image to the library: "
+                    f"{exc}.{cleanup_error}"
+                )
+                continue
             cards.append(card)
             if pin_immediately:
                 self.show_pin(card)

@@ -1,7 +1,18 @@
+import pytest
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QImage
+from PySide6.QtWidgets import QApplication
 
-from gaming_buddy.capture import DesktopSnapshot, ScreenCapture
+from gaming_buddy.capture import DesktopSnapshot, ScreenCapture, SelectionOverlay
+
+
+@pytest.fixture(scope="module")
+def application() -> QApplication:
+    existing = QApplication.instance()
+    if existing is not None:
+        assert isinstance(existing, QApplication)
+        return existing
+    return QApplication([])
 
 
 def solid_image(width: int, height: int, color: str) -> QImage:
@@ -41,3 +52,25 @@ def test_crop_outside_snapshot_is_null():
     snapshot = DesktopSnapshot(QImage(), QRect(0, 0, 100, 50), (screen,))
 
     assert snapshot.crop_native(QRect(200, 200, 20, 20)).isNull()
+
+
+def test_closing_selection_overlay_cancels_capture_once(
+    application: QApplication,
+) -> None:
+    image = solid_image(100, 50, "#202020")
+    snapshot = DesktopSnapshot(
+        image,
+        QRect(0, 0, 100, 50),
+        (ScreenCapture(QRect(0, 0, 100, 50), image),),
+    )
+    overlay = SelectionOverlay(snapshot)
+    cancellations: list[bool] = []
+    overlay.cancelled.connect(lambda: cancellations.append(True))
+
+    overlay.show()
+    application.processEvents()
+    overlay.close()
+    application.processEvents()
+    overlay.close()
+
+    assert cancellations == [True]

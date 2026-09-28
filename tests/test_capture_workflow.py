@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from gaming_buddy.capture_workflow import (
     normalize_capture_delay,
 )
 from gaming_buddy.dashboard import Dashboard
+from gaming_buddy.image_import import load_clipboard_image
 from gaming_buddy.storage import CardStore
 
 
@@ -156,6 +158,45 @@ def test_start_capture_uses_saved_delay_and_blocks_a_second_request(
             assert dashboard.isHidden()
             dashboard._capture_cancelled()
             assert dashboard.isVisible()
+        finally:
+            dashboard.game_detector.stop()
+            dashboard.tray.hide()
+            dashboard._really_quit = True
+            dashboard.close()
+
+
+def test_image_import_removes_saved_file_when_database_write_fails(
+    application: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    settings.setValue("onboarding/completed", True)
+    monkeypatch.setattr(dashboard_module, "QSettings", lambda *_args: settings)
+    monkeypatch.setattr(Dashboard, "_choose_image_import_action", lambda *_args: False)
+    warnings: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        dashboard_module.QMessageBox,
+        "warning",
+        lambda _parent, title, message: warnings.append((title, message)),
+    )
+    captures = tmp_path / "captures"
+    captures.mkdir()
+
+    with CardStore(tmp_path / "cards.sqlite3") as store:
+        dashboard = Dashboard(store, captures)
+        try:
+            def fail_to_add(_card: object) -> None:
+                raise sqlite3.OperationalError("database is unavailable")
+
+            monkeypatch.setattr(store, "add", fail_to_add)
+
+            dashboard._import_images([load_clipboard_image(_image())])
+
+            assert list(captures.iterdir()) == []
+            assert warnings
+            assert warnings[-1][0] == "Import incomplete"
+            assert "Could not add the image to the library" in warnings[-1][1]
         finally:
             dashboard.game_detector.stop()
             dashboard.tray.hide()

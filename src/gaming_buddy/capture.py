@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
+    QCloseEvent,
     QColor,
     QGuiApplication,
     QImage,
@@ -126,6 +127,7 @@ class SelectionOverlay(QWidget):
         self._snapshot = snapshot
         self._origin: QPoint | None = None
         self._current: QPoint | None = None
+        self._finished = False
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -195,6 +197,7 @@ class SelectionOverlay(QWidget):
         if selected.width() >= 12 and selected.height() >= 12:
             crop = self._snapshot.crop_native(self._global_selection(selected))
             if not crop.isNull():
+                self._finished = True
                 self.selected.emit(crop)
                 self.close()
                 return
@@ -204,10 +207,17 @@ class SelectionOverlay(QWidget):
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Escape:
+            self._finished = True
             self.cancelled.emit()
             self.close()
         else:
             super().keyPressEvent(event)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if not self._finished:
+            self._finished = True
+            self.cancelled.emit()
+        super().closeEvent(event)
 
 
 def begin_capture(parent: QWidget | None = None) -> SelectionOverlay:
