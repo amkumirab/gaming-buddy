@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -9,6 +10,7 @@ from PySide6.QtCore import (
     QProcess,
     QSettings,
     QSignalBlocker,
+    QSize,
     Qt,
     QTimer,
     QUrl,
@@ -35,6 +37,7 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -46,8 +49,11 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressDialog,
     QPushButton,
+    QScrollArea,
     QSlider,
+    QStyle,
     QSystemTrayIcon,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -203,58 +209,140 @@ class Dashboard(QMainWindow):
         QTimer.singleShot(350, self._show_first_run_setup)
         QTimer.singleShot(10_000, self._check_for_updates_automatically)
 
+    def _configure_button(
+        self,
+        button: QPushButton,
+        icon: QStyle.StandardPixmap,
+        tooltip: str,
+        *,
+        accessible_name: str | None = None,
+    ) -> QPushButton:
+        button.setIcon(self.style().standardIcon(icon))
+        button.setIconSize(QSize(18, 18))
+        button.setToolTip(tooltip)
+        button.setStatusTip(tooltip)
+        button.setAccessibleName(accessible_name or button.text().replace("…", ""))
+        button.setAccessibleDescription(tooltip)
+        return button
+
+    @staticmethod
+    def _section_panel(title: str, description: str = "") -> tuple[QFrame, QVBoxLayout]:
+        panel = QFrame()
+        panel.setObjectName("sectionCard")
+        panel.setAccessibleName(title)
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(14, 12, 14, 14)
+        panel_layout.setSpacing(10)
+        heading = QLabel(title)
+        heading.setObjectName("sectionTitle")
+        panel_layout.addWidget(heading)
+        if description:
+            summary = QLabel(description)
+            summary.setObjectName("muted")
+            summary.setWordWrap(True)
+            panel_layout.addWidget(summary)
+        return panel, panel_layout
+
+    @staticmethod
+    def _set_tab_sequence(widgets: list[QWidget]) -> None:
+        for current, following in pairwise(widgets):
+            QWidget.setTabOrder(current, following)
+
     def _build_ui(self) -> None:
         root = QWidget()
         root.setObjectName("panel")
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(16, 16, 16, 12)
         layout.setSpacing(12)
 
         hero = QFrame()
         hero.setObjectName("hero")
         hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(16, 13, 16, 13)
+        hero_layout.setSpacing(5)
         brand = QLabel("GAMING BUDDY")
         brand.setObjectName("brand")
         self.update_button = QPushButton(f"v{__version__}")
         self.update_button.setObjectName("compact")
-        self.update_button.setToolTip("Check for Gaming Buddy updates")
+        self._configure_button(
+            self.update_button,
+            QStyle.StandardPixmap.SP_BrowserReload,
+            "Check for Gaming Buddy updates",
+            accessible_name="Check for updates",
+        )
         self.update_button.clicked.connect(self.check_for_updates)
         brand_row = QHBoxLayout()
         brand_row.addWidget(brand)
         brand_row.addStretch(1)
         brand_row.addWidget(self.update_button)
-        subtitle = QLabel("Your clues, builds and screenshots — always in reach.")
+        subtitle = QLabel("Keep clues, builds, and screenshots within reach while you play.")
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
         hero_layout.addLayout(brand_row)
         hero_layout.addWidget(subtitle)
         layout.addWidget(hero)
 
-        game_label = QLabel("CURRENT GAME")
-        game_label.setObjectName("section")
+        self.main_tabs = QTabWidget()
+        self.main_tabs.setObjectName("mainTabs")
+        self.main_tabs.setDocumentMode(True)
+        self.main_tabs.tabBar().setExpanding(True)
+        self.main_tabs.tabBar().setUsesScrollButtons(False)
+        self.main_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
+        self.main_tabs.setAccessibleName("Main navigation")
+        self.main_tabs.setAccessibleDescription(
+            "Switch between capture tools, pin controls, and the saved card library."
+        )
+        layout.addWidget(self.main_tabs, 1)
+
+        capture_page = QWidget()
+        capture_page.setObjectName("tabPage")
+        capture_layout = QVBoxLayout(capture_page)
+        capture_layout.setContentsMargins(12, 14, 12, 12)
+        capture_layout.setSpacing(12)
+
+        game_panel, game_layout = self._section_panel(
+            "Game profile",
+            "Cards and pin layouts are organized around the selected game.",
+        )
+        game_row = QHBoxLayout()
+        game_label = QLabel("Game")
         self.game_input = QLineEdit()
         self.game_input.setPlaceholderText("e.g. Elden Ring")
+        self.game_input.setAccessibleName("Current game")
+        self.game_input.setAccessibleDescription(
+            "Enter the game name used to organize cards and layouts."
+        )
+        game_label.setBuddy(self.game_input)
         self.game_input.textChanged.connect(self._on_game_changed)
-        layout.addWidget(game_label)
-        layout.addWidget(self.game_input)
+        game_row.addWidget(game_label)
+        game_row.addWidget(self.game_input, 1)
+        game_layout.addLayout(game_row)
 
         profile_options = QHBoxLayout()
         self.auto_profiles = QCheckBox("Auto-switch game profiles")
+        self.auto_profiles.setAccessibleDescription(
+            "Switch profiles automatically when a linked game becomes active."
+        )
         self.auto_profiles.toggled.connect(self.set_auto_profiles)
         manage_profiles = QPushButton("Profiles…")
+        self._configure_button(
+            manage_profiles,
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Create, edit, and link game profiles",
+        )
         manage_profiles.clicked.connect(self.manage_profiles)
         profile_options.addWidget(self.auto_profiles)
         profile_options.addStretch(1)
         profile_options.addWidget(manage_profiles)
-        layout.addLayout(profile_options)
+        game_layout.addLayout(profile_options)
 
         self.auto_hide_pins = QCheckBox("Hide pins when a linked game loses focus")
         self.auto_hide_pins.setToolTip(
             "Keeps pins off other apps and restores them when you return to a linked game."
         )
         self.auto_hide_pins.toggled.connect(self.set_auto_hide_pins)
-        layout.addWidget(self.auto_hide_pins)
+        game_layout.addWidget(self.auto_hide_pins)
 
         detected_row = QHBoxLayout()
         self.detected_app = QLabel("Waiting for an active game…")
@@ -263,19 +351,31 @@ class Dashboard(QMainWindow):
             "Open a game, return with the panel shortcut, then link the detected executable."
         )
         link_profile = QPushButton("Link detected app")
+        self._configure_button(
+            link_profile,
+            QStyle.StandardPixmap.SP_DialogApplyButton,
+            "Link the detected executable to the current game profile",
+        )
         link_profile.clicked.connect(self.link_detected_application)
         detected_row.addWidget(self.detected_app, 1)
         detected_row.addWidget(link_profile)
-        layout.addLayout(detected_row)
+        game_layout.addLayout(detected_row)
+        capture_layout.addWidget(game_panel)
 
-        note_label = QLabel("QUICK NOTE")
-        note_label.setObjectName("section")
+        note_panel, note_layout = self._section_panel(
+            "Quick capture",
+            "Write a note, grab part of the screen, or import an existing image.",
+        )
+        note_label = QLabel("Note")
         self.note_input = QTextEdit()
         self.note_input.setPlaceholderText("Door code, quest clue, build order…")
-        self.note_input.setMaximumHeight(105)
+        self.note_input.setAccessibleName("Quick note")
+        self.note_input.setAccessibleDescription("Write a note to save or pin over the game.")
+        self.note_input.setMaximumHeight(130)
+        note_label.setBuddy(self.note_input)
         self.note_input.textChanged.connect(self._schedule_note_draft_save)
-        layout.addWidget(note_label)
-        layout.addWidget(self.note_input)
+        note_layout.addWidget(note_label)
+        note_layout.addWidget(self.note_input)
 
         self.note_draft_bar = QFrame()
         self.note_draft_bar.setObjectName("setupCard")
@@ -285,129 +385,322 @@ class Dashboard(QMainWindow):
         self.note_draft_label.setObjectName("muted")
         discard_draft = QPushButton("Discard draft")
         discard_draft.setObjectName("compact")
+        self._configure_button(
+            discard_draft,
+            QStyle.StandardPixmap.SP_TrashIcon,
+            "Remove the locally saved note draft",
+        )
         discard_draft.clicked.connect(self.discard_note_draft)
         draft_layout.addWidget(self.note_draft_label, 1)
         draft_layout.addWidget(discard_draft)
         self.note_draft_bar.hide()
-        layout.addWidget(self.note_draft_bar)
+        note_layout.addWidget(self.note_draft_bar)
 
-        note_buttons = QHBoxLayout()
+        note_buttons = QGridLayout()
+        note_buttons.setHorizontalSpacing(8)
+        note_buttons.setVerticalSpacing(8)
         save_button = QPushButton("Save")
+        self._configure_button(
+            save_button,
+            QStyle.StandardPixmap.SP_DialogSaveButton,
+            "Save this note to the card library",
+            accessible_name="Save note",
+        )
         save_button.clicked.connect(self.save_note)
         pin_button = QPushButton("Pin note")
+        self._configure_button(
+            pin_button,
+            QStyle.StandardPixmap.SP_DialogApplyButton,
+            "Save this note and pin it over the game",
+        )
         pin_button.clicked.connect(self.pin_note)
         capture_button = QPushButton("Capture area")
         capture_button.setObjectName("primary")
+        self._configure_button(
+            capture_button,
+            QStyle.StandardPixmap.SP_ComputerIcon,
+            "Select part of the screen and save it as a card",
+        )
         capture_button.clicked.connect(self.start_capture)
         import_button = QPushButton("Import image…")
-        import_button.setToolTip("Choose image files, drag them here, or paste with Ctrl+V")
+        self._configure_button(
+            import_button,
+            QStyle.StandardPixmap.SP_DialogOpenButton,
+            "Choose image files, drag them here, or paste with Ctrl+V",
+        )
         import_button.clicked.connect(self.choose_image_files)
-        note_buttons.addWidget(save_button)
-        note_buttons.addWidget(pin_button)
-        note_buttons.addWidget(capture_button)
-        note_buttons.addWidget(import_button)
-        layout.addLayout(note_buttons)
+        note_buttons.addWidget(capture_button, 0, 0)
+        note_buttons.addWidget(import_button, 0, 1)
+        note_buttons.addWidget(save_button, 1, 0)
+        note_buttons.addWidget(pin_button, 1, 1)
+        note_layout.addLayout(note_buttons)
+        capture_layout.addWidget(note_panel)
+        capture_layout.addStretch(1)
 
+        self.capture_scroll = QScrollArea()
+        self.capture_scroll.setObjectName("tabScroll")
+        self.capture_scroll.setWidgetResizable(True)
+        self.capture_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.capture_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.capture_scroll.setWidget(capture_page)
+        capture_tab = self.main_tabs.addTab(
+            self.capture_scroll,
+            self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
+            "Capture",
+        )
+        self.main_tabs.setTabToolTip(capture_tab, "Capture a clue or save a quick note")
+
+        workspace_page = QWidget()
+        workspace_page.setObjectName("tabPage")
+        workspace_layout = QVBoxLayout(workspace_page)
+        workspace_layout.setContentsMargins(12, 14, 12, 12)
+        workspace_layout.setSpacing(12)
+
+        display_panel, display_layout = self._section_panel(
+            "Pin display",
+            "Choose how new pins look and how they behave over the game.",
+        )
         controls = QHBoxLayout()
         opacity_label = QLabel("New pin opacity")
         opacity_label.setObjectName("muted")
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setRange(30, 100)
         self.opacity_slider.setValue(88)
+        self.opacity_slider.setAccessibleName("New pin opacity")
+        self.opacity_slider.setAccessibleDescription(
+            "Set the default opacity used by newly pinned cards."
+        )
+        opacity_label.setBuddy(self.opacity_slider)
         self.opacity_slider.valueChanged.connect(
             lambda value: self.settings.setValue("pins/default_opacity", value)
         )
         controls.addWidget(opacity_label)
         controls.addWidget(self.opacity_slider, 1)
-        layout.addLayout(controls)
+        display_layout.addLayout(controls)
 
         self.click_through = QCheckBox()
+        self.click_through.setAccessibleName("Click-through pins")
+        self.click_through.setAccessibleDescription(
+            "Let mouse clicks pass through pins to the game underneath."
+        )
+        self.click_through.setToolTip(
+            "Let mouse clicks pass through pins to the game underneath."
+        )
         self.click_through.toggled.connect(self.set_click_through)
-        layout.addWidget(self.click_through)
+        display_layout.addWidget(self.click_through)
 
-        focus_controls = QHBoxLayout()
         self.focus_button = QPushButton()
         self.focus_button.setCheckable(True)
+        self._configure_button(
+            self.focus_button,
+            QStyle.StandardPixmap.SP_TitleBarMaxButton,
+            "Temporarily emphasize every visible pin",
+            accessible_name="Toggle focus mode",
+        )
         self.focus_button.toggled.connect(self.set_focus_mode)
+        display_layout.addWidget(self.focus_button)
+        focus_controls = QHBoxLayout()
         self.focus_opacity_label = QLabel("Opacity 70%")
         self.focus_opacity_label.setObjectName("muted")
         self.focus_opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.focus_opacity_slider.setRange(30, 100)
         self.focus_opacity_slider.setValue(70)
+        self.focus_opacity_slider.setAccessibleName("Focus mode opacity")
         self.focus_opacity_slider.setToolTip(
             "Temporarily applies the same opacity to every pin in focus mode."
         )
+        self.focus_opacity_slider.setAccessibleDescription(
+            "Set the opacity applied to all pins while focus mode is active."
+        )
+        self.focus_opacity_label.setBuddy(self.focus_opacity_slider)
         self.focus_opacity_slider.valueChanged.connect(self._set_focus_opacity)
-        focus_controls.addWidget(self.focus_button)
         focus_controls.addWidget(self.focus_opacity_label)
         focus_controls.addWidget(self.focus_opacity_slider, 1)
-        layout.addLayout(focus_controls)
+        display_layout.addLayout(focus_controls)
+        workspace_layout.addWidget(display_panel)
 
-        workspace_controls = QHBoxLayout()
-        show_pins = QPushButton("Show saved pins")
+        visibility_panel, visibility_layout = self._section_panel(
+            "Pin workspace",
+            "Show, cycle, arrange, or unlock the cards currently pinned over a game.",
+        )
+        workspace_controls = QGridLayout()
+        workspace_controls.setHorizontalSpacing(8)
+        workspace_controls.setVerticalSpacing(8)
+        show_pins = QPushButton("Show pins")
+        self._configure_button(
+            show_pins,
+            QStyle.StandardPixmap.SP_DesktopIcon,
+            "Show every card saved as pinned for the current game",
+        )
         show_pins.clicked.connect(self.show_all_pins)
-        hide_pins = QPushButton("Hide all pins")
+        hide_pins = QPushButton("Hide pins")
+        self._configure_button(
+            hide_pins,
+            QStyle.StandardPixmap.SP_TitleBarMinButton,
+            "Hide every visible pin without removing it from the workspace",
+        )
         hide_pins.clicked.connect(self.hide_all_pins)
-        workspace_controls.addWidget(show_pins)
-        workspace_controls.addWidget(hide_pins)
-        layout.addLayout(workspace_controls)
+        workspace_controls.addWidget(show_pins, 0, 0)
+        workspace_controls.addWidget(hide_pins, 0, 1)
+        visibility_layout.addLayout(workspace_controls)
 
-        cycle_controls = QHBoxLayout()
-        self.previous_pin_button = QPushButton("◀ Previous pin")
+        cycle_controls = QGridLayout()
+        cycle_controls.setHorizontalSpacing(8)
+        self.previous_pin_button = QPushButton("Previous")
+        self._configure_button(
+            self.previous_pin_button,
+            QStyle.StandardPixmap.SP_ArrowBack,
+            "Show only the previous pinned card",
+        )
         self.previous_pin_button.clicked.connect(self.show_previous_pin)
-        self.next_pin_button = QPushButton("Next pin ▶")
+        self.next_pin_button = QPushButton("Next")
+        self._configure_button(
+            self.next_pin_button,
+            QStyle.StandardPixmap.SP_ArrowForward,
+            "Show only the next pinned card",
+        )
         self.next_pin_button.clicked.connect(self.show_next_pin)
         self.restore_pins_button = QPushButton("Restore pins")
+        self._configure_button(
+            self.restore_pins_button,
+            QStyle.StandardPixmap.SP_BrowserReload,
+            "Leave single-pin view and restore the workspace",
+        )
         self.restore_pins_button.clicked.connect(self.restore_pin_cycle)
-        cycle_controls.addWidget(self.previous_pin_button)
-        cycle_controls.addWidget(self.next_pin_button)
-        cycle_controls.addWidget(self.restore_pins_button)
-        layout.addLayout(cycle_controls)
+        cycle_controls.addWidget(self.previous_pin_button, 0, 0)
+        cycle_controls.addWidget(self.next_pin_button, 0, 1)
+        cycle_controls.addWidget(self.restore_pins_button, 1, 0, 1, 2)
+        visibility_layout.addLayout(cycle_controls)
 
-        layout_controls = QHBoxLayout()
-        collapse_pins = QPushButton("Collapse all")
+        layout_controls = QGridLayout()
+        layout_controls.setHorizontalSpacing(8)
+        layout_controls.setVerticalSpacing(8)
+        collapse_pins = QPushButton("Collapse")
+        self._configure_button(
+            collapse_pins,
+            QStyle.StandardPixmap.SP_ArrowUp,
+            "Collapse every visible pin to its title bar",
+        )
         collapse_pins.clicked.connect(self.collapse_all_pins)
-        expand_pins = QPushButton("Expand all")
+        expand_pins = QPushButton("Expand")
+        self._configure_button(
+            expand_pins,
+            QStyle.StandardPixmap.SP_ArrowDown,
+            "Expand every collapsed pin",
+        )
         expand_pins.clicked.connect(self.expand_all_pins)
-        unlock_pins = QPushButton("Unlock all")
+        unlock_pins = QPushButton("Unlock")
+        self._configure_button(
+            unlock_pins,
+            QStyle.StandardPixmap.SP_DialogApplyButton,
+            "Unlock every pin so it can be moved and resized",
+        )
         unlock_pins.clicked.connect(self.unlock_all_pins)
         layouts_button = QPushButton("Layouts…")
+        self._configure_button(
+            layouts_button,
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Save or restore named pin layouts for the current game",
+        )
         layouts_button.clicked.connect(self.manage_workspace_presets)
-        layout_controls.addWidget(collapse_pins)
-        layout_controls.addWidget(expand_pins)
-        layout_controls.addWidget(unlock_pins)
-        layout_controls.addWidget(layouts_button)
-        layout.addLayout(layout_controls)
+        layout_controls.addWidget(collapse_pins, 0, 0)
+        layout_controls.addWidget(expand_pins, 0, 1)
+        layout_controls.addWidget(unlock_pins, 1, 0)
+        layout_controls.addWidget(layouts_button, 1, 1)
+        visibility_layout.addLayout(layout_controls)
+        workspace_layout.addWidget(visibility_panel)
 
-        tools = QHBoxLayout()
+        tools_panel, tools_layout = self._section_panel(
+            "Application",
+            "Adjust preferences, move a workspace, or reopen the getting-started guide.",
+        )
+        tools = QGridLayout()
+        tools.setHorizontalSpacing(8)
+        tools.setVerticalSpacing(8)
         settings_button = QPushButton("Settings…")
+        self._configure_button(
+            settings_button,
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Open application, capture, shortcut, and update settings",
+        )
         settings_button.clicked.connect(self.open_settings)
         backup_button = QPushButton("Backup…")
+        self._configure_button(
+            backup_button,
+            QStyle.StandardPixmap.SP_DriveHDIcon,
+            "Save cards, settings, and pin layouts to a backup file",
+        )
         backup_button.clicked.connect(self.backup_workspace)
         restore_button = QPushButton("Restore…")
+        self._configure_button(
+            restore_button,
+            QStyle.StandardPixmap.SP_BrowserReload,
+            "Restore cards, settings, and pin layouts from a backup file",
+        )
         restore_button.clicked.connect(self.restore_backup)
-        getting_started_button = QPushButton("Getting started…")
+        getting_started_button = QPushButton("Help")
+        self._configure_button(
+            getting_started_button,
+            QStyle.StandardPixmap.SP_DialogHelpButton,
+            "Open the getting-started guide",
+        )
         getting_started_button.clicked.connect(self.show_getting_started)
-        tools.addWidget(settings_button)
-        tools.addWidget(backup_button)
-        tools.addWidget(restore_button)
-        tools.addWidget(getting_started_button)
-        layout.addLayout(tools)
+        tools.addWidget(settings_button, 0, 0)
+        tools.addWidget(getting_started_button, 0, 1)
+        tools.addWidget(backup_button, 1, 0)
+        tools.addWidget(restore_button, 1, 1)
+        tools_layout.addLayout(tools)
+        workspace_layout.addWidget(tools_panel)
+        workspace_layout.addStretch(1)
+
+        self.workspace_scroll = QScrollArea()
+        self.workspace_scroll.setObjectName("tabScroll")
+        self.workspace_scroll.setWidgetResizable(True)
+        self.workspace_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.workspace_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.workspace_scroll.setWidget(workspace_page)
+        workspace_tab = self.main_tabs.addTab(
+            self.workspace_scroll,
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
+            "Workspace",
+        )
+        self.main_tabs.setTabToolTip(workspace_tab, "Manage pin visibility and layouts")
+
+        library_page = QWidget()
+        library_page.setObjectName("tabPage")
+        library_layout = QVBoxLayout(library_page)
+        library_layout.setContentsMargins(12, 14, 12, 12)
+        library_layout.setSpacing(10)
 
         library_header = QHBoxLayout()
-        library_label = QLabel("SAVED CARDS")
-        library_label.setObjectName("section")
+        library_label = QLabel("Saved cards")
+        library_label.setObjectName("sectionTitle")
         self.library_selection_label = QLabel()
         self.library_selection_label.setObjectName("muted")
+        self.library_selection_label.setAccessibleName("Library selection summary")
         self.library_selection_label.hide()
         self.trash_button = QPushButton()
         self.trash_button.setObjectName("compact")
-        self.trash_button.setToolTip("Open recently deleted cards")
+        self._configure_button(
+            self.trash_button,
+            QStyle.StandardPixmap.SP_TrashIcon,
+            "Open recently deleted cards",
+            accessible_name="Recently deleted cards",
+        )
         self.trash_button.clicked.connect(self.open_trash)
         self.preview_button = QPushButton("Preview")
         self.preview_button.setObjectName("compact")
         self.preview_button.setCheckable(True)
         self.preview_button.setChecked(True)
+        self._configure_button(
+            self.preview_button,
+            QStyle.StandardPixmap.SP_FileDialogContentsView,
+            "Show or hide the selected card preview",
+        )
         self.preview_button.clicked.connect(self._set_preview_visible)
         self.filter_current = QAction("Current game only", self)
         self.filter_current.setCheckable(True)
@@ -444,6 +737,11 @@ class Dashboard(QMainWindow):
         clear_filters.triggered.connect(self._clear_library_filters)
         self.filter_button = QPushButton("Filters")
         self.filter_button.setObjectName("compact")
+        self._configure_button(
+            self.filter_button,
+            QStyle.StandardPixmap.SP_FileDialogListView,
+            "Filter saved cards by game, type, tag, favorite, or pin state",
+        )
         self.filter_button.setMenu(self.library_filter_menu)
         self.bulk_actions_menu = QMenu(self)
         self.bulk_pin_action = self.bulk_actions_menu.addAction("Pin selected")
@@ -476,22 +774,31 @@ class Dashboard(QMainWindow):
         self.bulk_trash_action.triggered.connect(self._bulk_move_to_trash)
         self.bulk_actions_button = QPushButton("Bulk actions")
         self.bulk_actions_button.setObjectName("compact")
+        self._configure_button(
+            self.bulk_actions_button,
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Choose an action for every selected card",
+        )
         self.bulk_actions_button.setMenu(self.bulk_actions_menu)
         self.bulk_actions_button.hide()
-        library_header.addWidget(library_label)
+        library_layout.addWidget(library_label)
         library_header.addWidget(self.library_selection_label)
+        library_header.addStretch(1)
         library_header.addWidget(self.trash_button)
         library_header.addWidget(self.preview_button)
         library_header.addWidget(self.filter_button)
         library_header.addWidget(self.bulk_actions_button)
-        library_header.addStretch(1)
-        layout.addLayout(library_header)
+        library_layout.addLayout(library_header)
 
         self.search_cards = QLineEdit()
         self.search_cards.setPlaceholderText("Search cards, screenshot text, and games…")
         self.search_cards.setClearButtonEnabled(True)
+        self.search_cards.setAccessibleName("Search saved cards")
+        self.search_cards.setAccessibleDescription(
+            "Search titles, note content, recognized screenshot text, tags, and game names."
+        )
         self.search_cards.textChanged.connect(self.refresh_cards)
-        layout.addWidget(self.search_cards)
+        library_layout.addWidget(self.search_cards)
 
         self.undo_bar = QFrame()
         self.undo_bar.setObjectName("undoBar")
@@ -502,13 +809,33 @@ class Dashboard(QMainWindow):
         self.undo_label.setWordWrap(True)
         undo_button = QPushButton("Undo")
         undo_button.setObjectName("compact")
+        self._configure_button(
+            undo_button,
+            QStyle.StandardPixmap.SP_BrowserReload,
+            "Restore the most recently deleted card",
+        )
         undo_button.clicked.connect(self._undo_delete)
         undo_layout.addWidget(self.undo_label, 1)
         undo_layout.addWidget(undo_button)
         self.undo_bar.hide()
-        layout.addWidget(self.undo_bar)
+        library_layout.addWidget(self.undo_bar)
+
+        self.library_empty_label = QLabel()
+        self.library_empty_label.setObjectName("emptyState")
+        self.library_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.library_empty_label.setWordWrap(True)
+        self.library_empty_label.setAccessibleName("Empty library message")
+        self.library_empty_label.hide()
+        library_layout.addWidget(self.library_empty_label)
 
         self.card_list = QListWidget()
+        self.card_list.setObjectName("cardLibrary")
+        self.card_list.setAccessibleName("Saved card library")
+        self.card_list.setAccessibleDescription(
+            "Select a card to preview it, or double-click a card to pin it."
+        )
+        self.card_list.setMinimumHeight(260)
+        self.card_list.setAlternatingRowColors(True)
         self.card_list.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
@@ -517,14 +844,21 @@ class Dashboard(QMainWindow):
         self.card_list.itemSelectionChanged.connect(self._update_selection_summary)
         self.card_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.card_list.customContextMenuRequested.connect(self._library_menu)
-        layout.addWidget(self.card_list, 1)
+        library_layout.addWidget(self.card_list, 1)
+
+        library_tab = self.main_tabs.addTab(
+            library_page,
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon),
+            "Library",
+        )
+        self.main_tabs.setTabToolTip(library_tab, "Search and manage saved cards")
 
         self.card_preview = CardPreviewPanel()
         self.card_preview.pin_requested.connect(self.show_pin)
         self.card_preview.edit_requested.connect(self._edit_card)
         self.card_preview.copy_requested.connect(self._copy_card)
         self.card_preview.extract_text_requested.connect(self._extract_image_text)
-        self.preview_dock = QDockWidget("CARD PREVIEW", self)
+        self.preview_dock = QDockWidget("Card preview", self)
         self.preview_dock.setObjectName("cardPreviewDock")
         self.preview_dock.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
@@ -542,6 +876,51 @@ class Dashboard(QMainWindow):
         self.shortcut_footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.shortcut_footer.setWordWrap(True)
         layout.addWidget(self.shortcut_footer)
+
+        self._set_tab_sequence(
+            [
+                self.game_input,
+                self.auto_profiles,
+                manage_profiles,
+                self.auto_hide_pins,
+                link_profile,
+                self.note_input,
+                capture_button,
+                import_button,
+                save_button,
+                pin_button,
+            ]
+        )
+        self._set_tab_sequence(
+            [
+                self.opacity_slider,
+                self.click_through,
+                self.focus_button,
+                self.focus_opacity_slider,
+                show_pins,
+                hide_pins,
+                self.previous_pin_button,
+                self.next_pin_button,
+                self.restore_pins_button,
+                collapse_pins,
+                expand_pins,
+                unlock_pins,
+                layouts_button,
+                settings_button,
+                getting_started_button,
+                backup_button,
+                restore_button,
+            ]
+        )
+        self._set_tab_sequence(
+            [
+                self.search_cards,
+                self.trash_button,
+                self.preview_button,
+                self.filter_button,
+                self.card_list,
+            ]
+        )
         self._update_shortcut_labels()
 
     def _build_tray(self) -> None:
@@ -1089,14 +1468,21 @@ class Dashboard(QMainWindow):
         click_through = self.shortcuts["toggle_click_through"]
         focus_mode = self.shortcuts["toggle_focus_mode"]
         if hasattr(self, "click_through"):
-            self.click_through.setText(f"Click-through pins  ({click_through})")
+            self.click_through.setText("Click-through pins")
+            self.click_through.setToolTip(
+                f"Let mouse clicks pass through pins to the game underneath "
+                f"({click_through})"
+            )
         if hasattr(self, "shortcut_footer"):
             self.shortcut_footer.setText(
                 f"{panel} panel  •  {finder} find  •  {capture} capture  •  "
                 f"{focus_mode} focus"
             )
         if hasattr(self, "focus_button"):
-            self.focus_button.setText(f"Focus mode  ({focus_mode})")
+            self.focus_button.setText("Focus mode")
+            self.focus_button.setToolTip(
+                f"Temporarily emphasize every visible pin ({focus_mode})"
+            )
         if hasattr(self, "previous_pin_button"):
             self.previous_pin_button.setToolTip(
                 f"Show only the previous pinned card ({self.shortcuts['previous_pin']})"
@@ -2031,21 +2417,28 @@ class Dashboard(QMainWindow):
             kind=self._library_kind_filter,
             tag=self._library_tag_filter,
         ):
-            kind_icon = "▣" if card.kind is CardKind.IMAGE else "◆"
-            favorite_icon = "★ " if card.favorite else ""
-            pinned_icon = "● " if card.pinned else ""
-            icon = f"{pinned_icon}{favorite_icon}{kind_icon}"
             game_label = card.game or "General"
-            workspace_label = " · Pinned" if card.pinned else ""
-            lock_label = " · Locked" if card.pinned and card.locked else ""
-            collapsed_label = " · Collapsed" if card.pinned and card.collapsed else ""
-            text_label = " · Text indexed" if card.kind is CardKind.IMAGE and card.content else ""
+            details = [game_label, "Image" if card.kind is CardKind.IMAGE else "Note"]
+            if card.pinned:
+                details.append("Pinned")
+            if card.favorite:
+                details.append("Favorite")
+            if card.pinned and card.locked:
+                details.append("Locked")
+            if card.pinned and card.collapsed:
+                details.append("Collapsed")
+            if card.kind is CardKind.IMAGE and card.content:
+                details.append("Text indexed")
             tag_text = format_tags(card.tags[:3])
-            tag_label = f" · {tag_text}" if tag_text else ""
-            item = QListWidgetItem(
-                f"{icon}  {card.title}\n     "
-                f"{game_label}{workspace_label}{lock_label}{collapsed_label}{text_label}"
-                f"{tag_label}"
+            if tag_text:
+                details.append(tag_text)
+            item = QListWidgetItem(f"{card.title}\n{' · '.join(details)}")
+            item.setIcon(
+                self.style().standardIcon(
+                    QStyle.StandardPixmap.SP_FileDialogContentsView
+                    if card.kind is CardKind.IMAGE
+                    else QStyle.StandardPixmap.SP_FileIcon
+                )
             )
             item.setData(Qt.ItemDataRole.UserRole, card.id)
             tooltip = "Saved in the restored workspace" if card.pinned else "Double-click to pin"
@@ -2068,6 +2461,24 @@ class Dashboard(QMainWindow):
         elif self.card_list.count():
             self.card_list.setCurrentRow(0)
         del blocker
+        has_filters = any(
+            (
+                self.filter_current.isChecked(),
+                self.filter_favorites.isChecked(),
+                self.filter_pinned.isChecked(),
+                self._library_kind_filter is not None,
+                bool(self._library_tag_filter),
+            )
+        )
+        if self.card_list.count():
+            self.library_empty_label.hide()
+        else:
+            self.library_empty_label.setText(
+                "No cards match your search or filters."
+                if query.strip() or has_filters
+                else "No saved cards yet. Capture part of the screen or save a quick note."
+            )
+            self.library_empty_label.show()
         self._update_selection_summary()
         self._update_card_preview(self.card_list.currentItem())
         self._update_filter_button()
