@@ -110,9 +110,16 @@ python -m gaming_buddy
 
 ## Install on Windows
 
-Download the latest `Gaming-Buddy-Setup-*-x64.exe` file from the repository's
-[Releases](https://github.com/amkumirab/gaming-buddy/releases) page and run it. The
-installer does not require administrator access. It creates a Start menu shortcut and
+Version `0.1.0` is awaiting clean-Windows installation verification. There is currently
+no published installer on the [Releases](https://github.com/amkumirab/gaming-buddy/releases)
+page. Use **Run from source** above until the first official release is available.
+Successful manual [Windows build runs](https://github.com/amkumirab/gaming-buddy/actions/workflows/windows-release.yml)
+provide test artifacts named `gaming-buddy-windows-<run-id>`; downloading Actions artifacts
+requires a GitHub account. These are test builds, not official releases.
+
+The planned release assets are `Gaming-Buddy-Setup-0.1.0-x64.exe` and
+`Gaming-Buddy-Setup-0.1.0-x64.exe.sha256`. The installer bundles its runtime and does not
+require Python or administrator access. It creates a Start menu shortcut and
 can optionally create a desktop shortcut. Launching the application at the end of setup
 is also optional.
 
@@ -123,8 +130,11 @@ and game profiles remain in the current user's Windows settings. During an inter
 uninstall, the user can explicitly choose to permanently remove this workspace and its
 settings. Choosing **No**, or running a silent uninstall, preserves them by default.
 
-Unsigned preview builds may show a Windows SmartScreen warning. Every release includes
+Unsigned builds may show a Windows SmartScreen warning. Release builds include
 a `.sha256` file so the installer can be checked before it is run.
+
+See [Windows release verification](docs/windows-release.md) for the required checks,
+checksum command, and the distinction between automated and clean-machine testing.
 
 ## How to use
 
@@ -314,8 +324,15 @@ uninstall keeps user data; administrators can pass `/PURGEUSERDATA` to the unins
 when permanent workspace removal is intended.
 
 Pushing a tag that exactly matches the project version, such as `v0.1.0`, runs the
-Windows release workflow and publishes the installer and its SHA-256 checksum. Running
+Windows release workflow and creates a draft with the installer and its SHA-256 checksum. Running
 the workflow manually builds a downloadable test artifact without publishing a release.
+Both paths test installation, bundled-runtime startup, shortcut targets, same-version
+reinstallation, and silent-uninstall data retention on a disposable Windows runner.
+The separate installer-test artifact contains the checks and installation logs. The
+runner has Python installed, so this is not a substitute for the clean-machine desktop
+checks required before pushing a release tag.
+Tagged builds create a draft release. Publish the draft only after desktop acceptance
+of those exact installer bytes, then link README to the downloadable official release.
 
 ## Ownership and license
 

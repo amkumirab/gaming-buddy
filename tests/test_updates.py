@@ -6,13 +6,17 @@ import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Self
+from urllib.error import HTTPError
 from urllib.request import Request
 
 import pytest
 
+import gaming_buddy.updates as updates_module
+from gaming_buddy import __version__
 from gaming_buddy.updates import (
     CHECK_INTERVAL,
     UpdateCancelled,
+    UpdateController,
     UpdateError,
     download_release,
     is_newer_version,
@@ -79,6 +83,61 @@ def test_versions_are_compared_numerically() -> None:
     assert is_newer_version("1.0.0", "1.0.0") is False
     with pytest.raises(ValueError, match="Unsupported version"):
         parse_version("1.2")
+
+
+def test_update_check_reports_no_published_release(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unavailable() -> None:
+        raise HTTPError(updates_module.LATEST_RELEASE_URL, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(updates_module, "fetch_latest_release", unavailable)
+    controller = UpdateController()
+    failures: list[str] = []
+    available: list[object] = []
+    current: list[object] = []
+    controller.check_failed.connect(failures.append)
+    controller.update_available.connect(available.append)
+    controller.up_to_date.connect(current.append)
+    controller._checking = True
+
+    controller._check_worker()
+
+    assert failures == ["No published Gaming Buddy release is available yet."]
+    assert available == current == []
+    assert not controller.checking
+
+
+@pytest.mark.parametrize("newer", [False, True])
+def test_update_check_distinguishes_current_and_newer_releases(
+    monkeypatch: pytest.MonkeyPatch,
+    newer: bool,
+) -> None:
+    major, minor, patch = parse_version(__version__)
+    version = f"{major}.{minor}.{patch + 1}" if newer else __version__
+    payload = _release_payload()
+    payload["tag_name"] = f"v{version}"
+    payload["html_url"] = f"{updates_module.RELEASE_PAGE_PREFIX}tag/v{version}"
+    assets = payload["assets"]
+    assert isinstance(assets, list)
+    for asset in assets:
+        asset["name"] = asset["name"].replace("1.2.3", version)
+        asset["browser_download_url"] = asset["browser_download_url"].replace("1.2.3", version)
+    release = parse_release_payload(payload)
+    monkeypatch.setattr(updates_module, "fetch_latest_release", lambda: release)
+    controller = UpdateController()
+    available: list[object] = []
+    current: list[object] = []
+    failures: list[str] = []
+    controller.update_available.connect(available.append)
+    controller.up_to_date.connect(current.append)
+    controller.check_failed.connect(failures.append)
+    controller._checking = True
+
+    controller._check_worker()
+
+    assert available == ([release] if newer else [])
+    assert current == ([] if newer else [release])
+    assert failures == []
+    assert not controller.checking
 
 
 def test_release_payload_selects_matching_verified_assets() -> None:

@@ -4,12 +4,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+from gaming_buddy import __version__
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_metadata_is_synchronized() -> None:
     result = subprocess.run(
-        [sys.executable, "scripts/validate_release.py", "--tag", "v0.1.0"],
+        [sys.executable, "scripts/validate_release.py", "--tag", f"v{__version__}"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         check=False,
@@ -17,7 +19,7 @@ def test_release_metadata_is_synchronized() -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "version 0.1.0" in result.stdout
+    assert f"version {__version__}" in result.stdout
 
 
 def test_release_metadata_rejects_mismatched_tag() -> None:

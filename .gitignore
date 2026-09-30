@@ -9,6 +9,7 @@ venv/
 build/
 dist/
 release/
+installer-test/
 *.sqlite3
 *.db
 .idea/

@@ -34,6 +34,20 @@ jobs:
       - name: Build installer and checksum
         shell: pwsh
         run: ./scripts/build_windows_installer.ps1 -SkipApplicationBuild
+      - name: Test installer lifecycle
+        shell: pwsh
+        run: |
+          $version = (python -c "from gaming_buddy import __version__; print(__version__)").Trim()
+          ./scripts/test_windows_installer.ps1 `
+            -InstallerPath "release/Gaming-Buddy-Setup-$version-x64.exe" `
+            -Version $version
+      - name: Upload installer test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gaming-buddy-installer-test-${{ github.run_id }}
+          path: installer-test/
+          if-no-files-found: warn
       - name: Upload installer
         uses: actions/upload-artifact@v7
         with:
@@ -60,8 +74,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $assets = Get-ChildItem -LiteralPath release -File | Select-Object -ExpandProperty FullName
+          $ErrorActionPreference = "Stop"
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $installer = "release/Gaming-Buddy-Setup-$version-x64.exe"
+          $checksum = "$installer.sha256"
+          $digest = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = "$digest  $([IO.Path]::GetFileName($installer))"
+          if ((Get-Content -LiteralPath $checksum -Raw).Trim() -cne $expected) {
+            throw "Release installer checksum or filename does not match."
+          }
+          $assets = @($installer, $checksum)
           gh release create $env:GITHUB_REF_NAME @assets `
             --verify-tag `
+            --draft `
             --generate-notes `
             --title "Gaming Buddy $env:GITHUB_REF_NAME"
+          if ($LASTEXITCODE -ne 0) { throw "Release publication failed." }
