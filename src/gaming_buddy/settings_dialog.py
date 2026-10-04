@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,7 +35,9 @@ from gaming_buddy.capture_workflow import (
     normalize_capture_action,
     normalize_capture_delay,
 )
+from gaming_buddy.diagnostics import DiagnosticReport, collect_diagnostics
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, SHORTCUT_LABELS, validate_shortcuts
+from gaming_buddy.troubleshooting import TroubleshootingPanel
 
 DEFAULT_PIN_OPACITY = 88
 DEFAULT_FOCUS_OPACITY = 70
@@ -64,6 +67,7 @@ class SettingsDialog(QDialog):
         version: str,
         storage_path: Path,
         startup_supported: bool,
+        diagnostics_provider: Callable[[], DiagnosticReport] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -78,12 +82,20 @@ class SettingsDialog(QDialog):
         layout.addWidget(title)
 
         tabs = QTabWidget()
+        tabs.setObjectName("settingsTabs")
         tabs.addTab(self._build_general_tab(values, startup_supported), "General")
         tabs.addTab(self._build_capture_tab(values), "Capture")
         tabs.addTab(self._build_overlay_tab(values), "Overlay")
         tabs.addTab(self._build_profiles_tab(values), "Game profiles")
         tabs.addTab(self._build_shortcuts_tab(values.shortcuts), "Shortcuts")
         tabs.addTab(self._build_about_tab(version, storage_path), "About")
+        self.troubleshooting = TroubleshootingPanel(
+            diagnostics_provider or (
+                lambda: collect_diagnostics(storage_path, storage_path / "captures", version=version)
+            ),
+            self,
+        )
+        tabs.addTab(self.troubleshooting, "Troubleshooting")
         layout.addWidget(tabs, 1)
 
         buttons = QDialogButtonBox(

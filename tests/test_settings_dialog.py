@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
-from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QLineEdit
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QLineEdit, QTabWidget
 
 from gaming_buddy.capture_workflow import (
     DEFAULT_CAPTURE_ACTION,
@@ -14,6 +15,7 @@ from gaming_buddy.capture_workflow import (
     DEFAULT_KEEP_PANEL_HIDDEN,
     CaptureAction,
 )
+from gaming_buddy.diagnostics import DiagnosticCheck, DiagnosticReport
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS
 from gaming_buddy.settings_dialog import (
     DEFAULT_FOCUS_OPACITY,
@@ -126,3 +128,48 @@ def test_duplicate_shortcuts_are_rejected_by_values(
 
     with pytest.raises(ValueError, match="already assigned"):
         dialog.values()
+
+
+def test_troubleshooting_does_not_save_settings_or_accept_the_dialog(
+    application: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+    copies: list[str] = []
+
+    class Clipboard:
+        def setText(self, text: str) -> None:
+            copies.append(text)
+
+    monkeypatch.setattr(QApplication, "clipboard", lambda: Clipboard())
+
+    def provider() -> DiagnosticReport:
+        calls.append(1)
+        return DiagnosticReport(
+            (), (DiagnosticCheck("Shortcuts", "Paused in Settings", "Close Settings."),),
+        )
+
+    values = _snapshot()
+    dialog = SettingsDialog(
+        values, version="1.2.3", storage_path=tmp_path,
+        startup_supported=True, diagnostics_provider=provider,
+    )
+    try:
+        tabs = dialog.findChild(QTabWidget)
+        assert tabs is not None
+        tabs.setCurrentWidget(dialog.troubleshooting)
+        dialog.show()
+        application.processEvents()
+        dialog.troubleshooting.run_button.setFocus()
+        QTest.keyClick(dialog.troubleshooting.run_button, Qt.Key.Key_Space)
+        assert calls == [1]
+        QTest.keyClick(dialog.troubleshooting.run_button, Qt.Key.Key_Return)
+        assert calls == [1, 1]
+        QTest.keyClick(dialog.troubleshooting.run_button, Qt.Key.Key_Tab)
+        assert dialog.focusWidget() is dialog.troubleshooting.copy_button
+        QTest.keyClick(dialog.troubleshooting.copy_button, Qt.Key.Key_Return)
+        assert copies == [dialog.troubleshooting.report_view.toPlainText()]
+        assert dialog.isVisible()
+        assert dialog.result() == 0
+        assert dialog.values() == values
+    finally:
+        dialog.close()

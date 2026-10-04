@@ -139,6 +139,10 @@ class GlobalHotkeys(QObject):
         self._listener: keyboard.GlobalHotKeys | None = None
         self._shortcuts = validate_shortcuts(shortcuts or DEFAULT_SHORTCUTS)
 
+    @property
+    def running(self) -> bool:
+        return self._listener is not None and self._listener.is_alive()
+
     def start(self) -> None:
         try:
             hooks = shortcut_hooks(self._shortcuts)

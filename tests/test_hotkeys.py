@@ -1,7 +1,9 @@
 import pytest
 
+import gaming_buddy.hotkeys as hotkeys_module
 from gaming_buddy.hotkeys import (
     DEFAULT_SHORTCUTS,
+    GlobalHotkeys,
     parse_shortcut,
     shortcut_hooks,
     validate_shortcuts,
@@ -37,3 +39,36 @@ def test_duplicate_shortcuts_are_rejected():
     duplicates = DEFAULT_SHORTCUTS | {"capture_area": "shift+ctrl+g"}
     with pytest.raises(ValueError, match="already assigned"):
         validate_shortcuts(duplicates)
+
+
+def test_listener_status_tracks_start_stop_and_failure(monkeypatch):
+    class Listener:
+        def __init__(self, hooks):
+            self.alive = False
+
+        def start(self):
+            self.alive = True
+
+        def stop(self):
+            self.alive = False
+
+        def is_alive(self):
+            return self.alive
+
+    monkeypatch.setattr(hotkeys_module.keyboard, "GlobalHotKeys", Listener)
+    hotkeys = GlobalHotkeys()
+    assert not hotkeys.running
+    hotkeys.start()
+    assert hotkeys.running
+    hotkeys.stop()
+    assert not hotkeys.running
+
+    def unavailable(hooks):
+        raise RuntimeError("Hook not available")
+
+    monkeypatch.setattr(hotkeys_module.keyboard, "GlobalHotKeys", unavailable)
+    failures = []
+    hotkeys.failed.connect(failures.append)
+    hotkeys.start()
+    assert not hotkeys.running
+    assert failures == ["Hook not available"]

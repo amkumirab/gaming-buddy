@@ -66,6 +66,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Persist everything locally in SQLite
 - Configurable global shortcuts and a system tray menu
 - Central settings window for overlay, profile, startup, update, and shortcut preferences
+- Local troubleshooting checks and a privacy-safe diagnostic report for support
 - First-run setup guide with a quick overview of capture, pins, and shortcuts
 - Optional launch at Windows sign-in without administrator access
 - Per-user Windows installer with clean update and uninstall support
@@ -202,6 +203,12 @@ checksum command, and the distinction between automated and clean-machine testin
 27. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
 28. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
+29. Open **Settings > Troubleshooting** and choose **Run checks** to check note-folder
+    write access, PNG saving, the tray icon, and the global shortcut listener. Review the
+    report before choosing **Copy diagnostic report** to share it with support. Global
+    shortcuts are intentionally paused while Settings is open; their prior listener state
+    is reported separately from a failure. Recent error categories cover the current session
+    only and do not include the original exception text.
 
 Captured images and the SQLite database are stored under:
 
@@ -241,6 +248,8 @@ gaming-buddy/
 │   ├── pin_visibility.py # Focus-aware pin visibility controller
 │   ├── shortcut_dialog.py # Shortcut settings dialog
 │   ├── settings_dialog.py # Central application settings and About panel
+│   ├── diagnostics.py   # Local checks and fixed, session-only error categories
+│   ├── troubleshooting.py # Diagnostic report preview and explicit clipboard copy
 │   ├── onboarding.py   # First-run setup guide
 │   ├── updates.py      # Release checks, secure downloads, and version comparison
 │   ├── update_dialog.py # Release notes and update consent
@@ -258,6 +267,10 @@ gaming-buddy/
 ## Privacy and storage
 
 - Notes and captured images remain on the user's computer.
+- Troubleshooting reports exclude saved content, game names, file paths, account names,
+  and keyboard input. Checks create and remove small temporary SQLite and PNG files without
+  reading saved cards. Error categories are kept only in memory, and reports are never
+  uploaded automatically. Copying a report replaces the clipboard only on request.
 - Markdown note previews do not automatically load linked local or remote images.
 - Unfinished quick-note drafts remain local and are removed after saving, pinning, or choosing
   **Discard draft**.

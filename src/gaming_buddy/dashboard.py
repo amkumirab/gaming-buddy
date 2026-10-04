@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
@@ -73,6 +74,7 @@ from gaming_buddy.capture_workflow import (
 from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.card_export import CardExportError, create_card_export
 from gaming_buddy.card_preview import CardPreviewPanel
+from gaming_buddy.diagnostics import DiagnosticHistory, IssueKind, collect_diagnostics
 from gaming_buddy.focus_mode import FocusModeState, PinPresentation
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
 from gaming_buddy.image_annotation import (
@@ -144,6 +146,8 @@ class Dashboard(QMainWindow):
         super().__init__()
         self.store = store
         self.captures_dir = captures_dir
+        self.diagnostic_history = DiagnosticHistory()
+        self.shortcut_status: Callable[[], bool] | None = None
         self.settings = QSettings("GamingBuddy", "GamingBuddy")
         self.startup_manager = StartupManager()
         self.shortcuts = self._load_shortcuts()
@@ -1103,12 +1107,21 @@ class Dashboard(QMainWindow):
             ),
             shortcuts=self.shortcuts.copy(),
         )
+        shortcuts_running = self.shortcut_status() if self.shortcut_status else None
         self.shortcut_editing_started.emit()
         dialog = SettingsDialog(
             values,
             version=__version__,
             storage_path=data_dir(),
             startup_supported=self.startup_manager.supported,
+            diagnostics_provider=lambda: collect_diagnostics(
+                self.store.database.parent,
+                self.captures_dir,
+                shortcuts_running=shortcuts_running,
+                shortcuts_paused=True,
+                tray_visible=self.tray.isVisible(),
+                recent_issues=self.diagnostic_history.snapshot(),
+            ),
             parent=self,
         )
         if not dialog.exec():
@@ -1139,6 +1152,10 @@ class Dashboard(QMainWindow):
         self._update_shortcut_labels()
         self.shortcuts_changed.emit(self.shortcuts.copy())
         self.statusBar().showMessage("Settings saved", 3000)
+
+    def on_shortcuts_failed(self, message: str) -> None:
+        self.diagnostic_history.record(IssueKind.SHORTCUTS)
+        self.statusBar().showMessage(f"Global shortcuts unavailable: {message}")
 
     def set_launch_at_sign_in(self, enabled: bool) -> None:
         try:
@@ -1230,6 +1247,7 @@ class Dashboard(QMainWindow):
         self._update_check_manual = False
 
     def _on_update_check_failed(self, message: str) -> None:
+        self.diagnostic_history.record(IssueKind.UPDATE_CHECK)
         if self._update_check_manual:
             QMessageBox.warning(self, "Update check failed", message)
         self._update_check_manual = False
@@ -1280,6 +1298,7 @@ class Dashboard(QMainWindow):
         if message == "Update download cancelled.":
             self.statusBar().showMessage(message, 2500)
             return
+        self.diagnostic_history.record(IssueKind.UPDATE_DOWNLOAD)
         QMessageBox.warning(self, "Update download failed", message)
 
     def _on_update_download_ready(self, installer_path: str, release: ReleaseInfo) -> None:
@@ -1641,6 +1660,7 @@ class Dashboard(QMainWindow):
                 self.game_input.text(),
             )
         except DraftError as error:
+            self.diagnostic_history.record(IssueKind.DRAFT)
             self.statusBar().showMessage(str(error), 3500)
             return
         if draft is None:
@@ -1708,7 +1728,8 @@ class Dashboard(QMainWindow):
         card = self._make_note()
         if card is None:
             return
-        self.store.add(card)
+        if not self._store_note(card):
+            return
         self._clear_note_editor_and_draft()
         self.refresh_cards()
         self.statusBar().showMessage("Note saved", 2500)
@@ -1717,10 +1738,24 @@ class Dashboard(QMainWindow):
         card = self._make_note()
         if card is None:
             return
-        self.store.add(card)
+        if not self._store_note(card):
+            return
         self._clear_note_editor_and_draft()
         self.show_pin(card)
         self.refresh_cards()
+
+    def _store_note(self, card: Card) -> bool:
+        try:
+            self.store.add(card)
+        except sqlite3.Error:
+            self.diagnostic_history.record(IssueKind.NOTE)
+            QMessageBox.warning(
+                self, "Note could not be saved",
+                "Your text is still in the editor. Check free disk space and folder access, "
+                "then try again. You can also run the checks in Settings > Troubleshooting.",
+            )
+            return False
+        return True
 
     def start_capture(self, _checked: bool = False) -> None:
         if self._capture_in_progress:
@@ -1861,6 +1896,7 @@ class Dashboard(QMainWindow):
             self.hide()
 
     def _capture_failed(self, message: str) -> None:
+        self.diagnostic_history.record(IssueKind.CAPTURE)
         self._capture_in_progress = False
         self.capture_overlay = None
         self.show_panel()
@@ -1889,6 +1925,7 @@ class Dashboard(QMainWindow):
         try:
             imported = load_clipboard_image(clipboard.image())
         except ImageImportError as exc:
+            self.diagnostic_history.record(IssueKind.IMPORT)
             QMessageBox.warning(self, "Paste failed", str(exc))
             return
         self._import_images([imported])
@@ -1900,6 +1937,7 @@ class Dashboard(QMainWindow):
             try:
                 imported.append(load_image_file(path))
             except ImageImportError as exc:
+                self.diagnostic_history.record(IssueKind.IMPORT)
                 errors.append(str(exc))
         if errors:
             details = "\n".join(f"• {message}" for message in errors[:6])
@@ -1930,6 +1968,7 @@ class Dashboard(QMainWindow):
             try:
                 path = save_imported_image(candidate, self.captures_dir)
             except ImageImportError as exc:
+                self.diagnostic_history.record(IssueKind.IMPORT)
                 failures.append(f"{candidate.source_name}: {exc}")
                 continue
             card = Card(
@@ -1945,6 +1984,7 @@ class Dashboard(QMainWindow):
             try:
                 self.store.add(card)
             except sqlite3.Error as exc:
+                self.diagnostic_history.record(IssueKind.IMPORT)
                 cleanup_error = ""
                 try:
                     path.unlink(missing_ok=True)
