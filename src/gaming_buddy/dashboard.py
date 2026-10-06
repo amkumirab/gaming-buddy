@@ -25,6 +25,7 @@ from PySide6.QtGui import (
     QDragEnterEvent,
     QDragLeaveEvent,
     QDropEvent,
+    QGuiApplication,
     QIcon,
     QImage,
     QKeyEvent,
@@ -62,7 +63,7 @@ from PySide6.QtWidgets import (
 
 from gaming_buddy import __version__
 from gaming_buddy.bulk_card_dialog import BulkCardDialog
-from gaming_buddy.capture import SelectionOverlay, begin_capture
+from gaming_buddy.capture import SelectionOverlay, begin_capture, grab_monitor, select_monitor
 from gaming_buddy.capture_workflow import (
     DEFAULT_CAPTURE_NOTIFICATIONS,
     DEFAULT_KEEP_PANEL_HIDDEN,
@@ -76,7 +77,7 @@ from gaming_buddy.card_export import CardExportError, create_card_export
 from gaming_buddy.card_preview import CardPreviewPanel
 from gaming_buddy.diagnostics import DiagnosticHistory, IssueKind, collect_diagnostics
 from gaming_buddy.focus_mode import FocusModeState, PinPresentation
-from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, validate_shortcuts
+from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, complete_shortcuts, validate_shortcuts
 from gaming_buddy.image_annotation import (
     AnnotationDialog,
     AnnotationSaveError,
@@ -426,6 +427,13 @@ class Dashboard(QMainWindow):
             "Select part of the screen and save it as a card",
         )
         capture_button.clicked.connect(self.start_capture)
+        full_capture_button = QPushButton("Capture full monitor")
+        self._configure_button(
+            full_capture_button,
+            QStyle.StandardPixmap.SP_ComputerIcon,
+            "Save the entire selected monitor immediately without leaving the game",
+        )
+        full_capture_button.clicked.connect(self.start_full_screen_capture)
         import_button = QPushButton("Import image…")
         self._configure_button(
             import_button,
@@ -435,8 +443,9 @@ class Dashboard(QMainWindow):
         import_button.clicked.connect(self.choose_image_files)
         note_buttons.addWidget(capture_button, 0, 0)
         note_buttons.addWidget(import_button, 0, 1)
-        note_buttons.addWidget(save_button, 1, 0)
-        note_buttons.addWidget(pin_button, 1, 1)
+        note_buttons.addWidget(full_capture_button, 1, 0, 1, 2)
+        note_buttons.addWidget(save_button, 2, 0)
+        note_buttons.addWidget(pin_button, 2, 1)
         note_layout.addLayout(note_buttons)
         capture_layout.addWidget(note_panel)
         capture_layout.addStretch(1)
@@ -891,6 +900,7 @@ class Dashboard(QMainWindow):
                 self.note_input,
                 capture_button,
                 import_button,
+                full_capture_button,
                 save_button,
                 pin_button,
             ]
@@ -945,6 +955,8 @@ class Dashboard(QMainWindow):
         quick_finder_action.triggered.connect(self.show_quick_finder)
         capture_action = QAction("Capture area", menu)
         capture_action.triggered.connect(self.start_capture)
+        full_capture_action = QAction("Capture full monitor", menu)
+        full_capture_action.triggered.connect(self.start_full_screen_capture)
         paste_image_action = QAction("Paste image", menu)
         paste_image_action.triggered.connect(self.paste_image)
         import_image_action = QAction("Import image…", menu)
@@ -1004,6 +1016,7 @@ class Dashboard(QMainWindow):
         menu.addAction(show_action)
         menu.addAction(quick_finder_action)
         menu.addAction(capture_action)
+        menu.addAction(full_capture_action)
         menu.addAction(paste_image_action)
         menu.addAction(import_image_action)
         menu.addSeparator()
@@ -1106,6 +1119,7 @@ class Dashboard(QMainWindow):
                 type=bool,
             ),
             shortcuts=self.shortcuts.copy(),
+            full_screen_monitor=str(self.settings.value("capture/full_screen_monitor", "primary")),
         )
         shortcuts_running = self.shortcut_status() if self.shortcut_status else None
         self.shortcut_editing_started.emit()
@@ -1146,6 +1160,7 @@ class Dashboard(QMainWindow):
             updated.capture_keep_panel_hidden,
         )
         self.settings.setValue("capture/notifications", updated.capture_notifications)
+        self.settings.setValue("capture/full_screen_monitor", updated.full_screen_monitor)
         if updated.launch_at_sign_in != current_startup:
             self.set_launch_at_sign_in(updated.launch_at_sign_in)
         self.settings.sync()
@@ -1460,9 +1475,10 @@ class Dashboard(QMainWindow):
         saved = {
             action: str(self.settings.value(f"shortcuts/{action}", default))
             for action, default in DEFAULT_SHORTCUTS.items()
+            if self.settings.contains(f"shortcuts/{action}")
         }
         try:
-            return validate_shortcuts(saved)
+            return complete_shortcuts(saved)
         except ValueError:
             return DEFAULT_SHORTCUTS.copy()
 
@@ -1757,6 +1773,37 @@ class Dashboard(QMainWindow):
             return False
         return True
 
+    def start_full_screen_capture(self, _checked: bool = False) -> None:
+        if self._capture_in_progress:
+            self.statusBar().showMessage("A capture is already in progress", 2500)
+            return
+        self._capture_in_progress = True
+        game = self.game_input.text().strip() or "General"
+        hidden_windows: list[QWidget] = []
+        try:
+            screen = select_monitor(str(self.settings.value("capture/full_screen_monitor", "primary")))
+            self._capture_panel_was_visible = self.isVisible()
+            self.hide()
+            windows = list(self.pins.values())
+            if self._quick_finder is not None:
+                windows.append(self._quick_finder)
+            hidden_windows = [window for window in windows if window.isVisible()]
+            for window in hidden_windows:
+                window.hide()
+            # Flush hidden overlay windows before grabbing, without a selection or countdown.
+            QGuiApplication.sync()
+            image = grab_monitor(screen)
+        except RuntimeError as exc:
+            self._capture_failed(str(exc))
+            return
+        finally:
+            for window in hidden_windows:
+                without_activation = window.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+                window.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+                window.show()
+                window.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, without_activation)
+        self._save_capture(image, instant=True, game=game)
+
     def start_capture(self, _checked: bool = False) -> None:
         if self._capture_in_progress:
             self.statusBar().showMessage("A capture is already in progress", 2500)
@@ -1791,11 +1838,13 @@ class Dashboard(QMainWindow):
             self.show_panel()
             QMessageBox.warning(self, "Capture failed", str(exc))
 
-    def _save_capture(self, image: QImage) -> None:
+    def _save_capture(self, image: QImage, *, instant: bool = False, game: str | None = None) -> None:
         pin_capture = True
         action = normalize_capture_action(
             self.settings.value("capture/action", CaptureAction.SAVE_AND_PIN.value)
         )
+        if instant:
+            action = CaptureAction.SAVE_ONLY
         if action is CaptureAction.SAVE_ONLY:
             pin_capture = False
         elif action is CaptureAction.REVIEW:
@@ -1816,7 +1865,7 @@ class Dashboard(QMainWindow):
         if not image.save(str(path), "PNG", 100):
             self._capture_failed("Could not save the selected image.")
             return
-        game = self.game_input.text().strip() or "General"
+        game = game or self.game_input.text().strip() or "General"
         card = Card(
             id=None,
             kind=CardKind.IMAGE,
@@ -1830,8 +1879,15 @@ class Dashboard(QMainWindow):
         try:
             self.store.add(card)
         except sqlite3.Error as exc:
-            path.unlink(missing_ok=True)
-            self._capture_failed(f"Could not add the screenshot to the library: {exc}")
+            cleanup_note = ""
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                cleanup_note = (
+                    " The saved PNG could not be removed from the capture folder. "
+                    "Check folder access before retrying."
+                )
+            self._capture_failed(f"Could not add the screenshot to the library: {exc}{cleanup_note}")
             return
         if pin_capture:
             self.show_pin(card)
@@ -1843,7 +1899,7 @@ class Dashboard(QMainWindow):
             DEFAULT_KEEP_PANEL_HIDDEN,
             type=bool,
         )
-        if keep_hidden:
+        if keep_hidden or instant:
             self.hide()
         else:
             self.show_panel()

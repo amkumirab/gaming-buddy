@@ -5,13 +5,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QKeySequence
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QKeySequenceEdit,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSlider,
     QTabWidget,
     QVBoxLayout,
@@ -57,6 +59,7 @@ class SettingsSnapshot:
     capture_keep_panel_hidden: bool
     capture_notifications: bool
     shortcuts: dict[str, str]
+    full_screen_monitor: str = "primary"
 
 
 class SettingsDialog(QDialog):
@@ -155,6 +158,18 @@ class SettingsDialog(QDialog):
         )
         self.capture_delay.setCurrentIndex(max(0, delay_index))
         form.addRow("Start capture after", self.capture_delay)
+        self.full_screen_monitor = QComboBox()
+        self.full_screen_monitor.setAccessibleName("Full-screen capture monitor")
+        self.full_screen_monitor.addItem("Primary monitor", "primary")
+        self.full_screen_monitor.addItem("Monitor under the pointer", "pointer")
+        for index, screen in enumerate(QGuiApplication.screens(), 1):
+            self.full_screen_monitor.addItem(f"Monitor {index} ({screen.name()})", f"screen:{screen.name()}")
+        monitor_index = self.full_screen_monitor.findData(values.full_screen_monitor)
+        if monitor_index < 0:
+            self.full_screen_monitor.addItem("Saved monitor (not connected)", values.full_screen_monitor)
+            monitor_index = self.full_screen_monitor.count() - 1
+        self.full_screen_monitor.setCurrentIndex(monitor_index)
+        form.addRow("Full-screen capture monitor", self.full_screen_monitor)
         layout.addLayout(form)
 
         self.capture_keep_panel_hidden = QCheckBox(
@@ -173,6 +188,13 @@ class SettingsDialog(QDialog):
         note.setObjectName("muted")
         note.setWordWrap(True)
         layout.addWidget(note)
+        instant_note = QLabel(
+            "Full-screen capture saves directly to the library without a countdown, review, "
+            "or new pin. The panel stays hidden so you can keep playing."
+        )
+        instant_note.setObjectName("muted")
+        instant_note.setWordWrap(True)
+        layout.addWidget(instant_note)
         layout.addStretch(1)
         return tab
 
@@ -235,6 +257,8 @@ class SettingsDialog(QDialog):
 
     def _build_shortcuts_tab(self, shortcuts: dict[str, str]) -> QWidget:
         tab = QWidget()
+        tab.setObjectName("panel")
+        tab.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         layout = QVBoxLayout(tab)
         intro = QLabel(
             "Choose shortcuts that work from anywhere. Each shortcut needs at least one "
@@ -255,7 +279,13 @@ class SettingsDialog(QDialog):
         restore.clicked.connect(self._restore_shortcut_defaults)
         layout.addWidget(restore)
         layout.addStretch(1)
-        return tab
+        scroll = QScrollArea()
+        scroll.setObjectName("tabScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(tab)
+        return scroll
 
     def _build_about_tab(self, version: str, storage_path: Path) -> QWidget:
         tab = QWidget()
@@ -311,6 +341,7 @@ class SettingsDialog(QDialog):
             capture_keep_panel_hidden=self.capture_keep_panel_hidden.isChecked(),
             capture_notifications=self.capture_notifications.isChecked(),
             shortcuts=validate_shortcuts(shortcuts),
+            full_screen_monitor=str(self.full_screen_monitor.currentData()),
         )
 
     def accept(self) -> None:
@@ -337,6 +368,7 @@ class SettingsDialog(QDialog):
         )
         self.capture_keep_panel_hidden.setChecked(DEFAULT_KEEP_PANEL_HIDDEN)
         self.capture_notifications.setChecked(DEFAULT_CAPTURE_NOTIFICATIONS)
+        self.full_screen_monitor.setCurrentIndex(self.full_screen_monitor.findData("primary"))
         self._restore_shortcut_defaults()
 
     def _restore_shortcut_defaults(self) -> None:

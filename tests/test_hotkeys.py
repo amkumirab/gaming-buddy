@@ -16,6 +16,7 @@ def test_default_shortcuts_are_valid():
         "toggle_panel": "<ctrl>+<shift>+g",
         "quick_finder": "<ctrl>+<shift>+f",
         "capture_area": "<ctrl>+<shift>+s",
+        "capture_screen": "<ctrl>+<shift>+d",
         "toggle_click_through": "<ctrl>+<shift>+l",
         "toggle_focus_mode": "<ctrl>+<shift>+m",
         "previous_pin": "<ctrl>+<shift>+<left>",
@@ -72,3 +73,23 @@ def test_listener_status_tracks_start_stop_and_failure(monkeypatch):
     hotkeys.start()
     assert not hotkeys.running
     assert failures == ["Hook not available"]
+
+
+def test_full_monitor_shortcut_emits_its_own_action(monkeypatch):
+    callbacks = {}
+    class Listener:
+        def __init__(self, hooks):
+            callbacks.update(hooks)
+        def start(self):
+            pass
+        def stop(self):
+            pass
+    monkeypatch.setattr(hotkeys_module.keyboard, "GlobalHotKeys", Listener)
+    hotkeys = GlobalHotkeys()
+    fired = []
+    hotkeys.capture_screen.connect(lambda: fired.append("screen"))
+    hotkeys.capture_area.connect(lambda: fired.append("area"))
+    hotkeys.start()
+    callbacks["<ctrl>+<shift>+d"]()
+    assert fired == ["screen"]
+    hotkeys.stop()

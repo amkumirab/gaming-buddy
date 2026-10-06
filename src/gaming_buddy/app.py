@@ -32,6 +32,7 @@ def main() -> int:
     hotkeys.toggle_panel.connect(dashboard.toggle_panel)
     hotkeys.quick_finder.connect(dashboard.show_quick_finder)
     hotkeys.capture_area.connect(dashboard.start_capture)
+    hotkeys.capture_screen.connect(dashboard.start_full_screen_capture)
     hotkeys.toggle_click_through.connect(dashboard.toggle_click_through)
     hotkeys.toggle_focus_mode.connect(dashboard.toggle_focus_mode)
     hotkeys.previous_pin.connect(dashboard.show_previous_pin)

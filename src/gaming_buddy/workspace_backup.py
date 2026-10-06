@@ -43,6 +43,7 @@ PORTABLE_SETTING_KEYS = {
     "shortcuts/toggle_panel",
     "shortcuts/quick_finder",
     "shortcuts/capture_area",
+    "shortcuts/capture_screen",
     "shortcuts/toggle_click_through",
     "shortcuts/toggle_focus_mode",
     "shortcuts/previous_pin",

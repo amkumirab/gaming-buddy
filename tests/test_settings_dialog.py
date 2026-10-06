@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -49,6 +50,22 @@ def _snapshot() -> SettingsSnapshot:
         capture_notifications=False,
         shortcuts=DEFAULT_SHORTCUTS.copy(),
     )
+
+
+def test_missing_capture_monitor_is_preserved_until_user_changes_it(application, tmp_path):
+    snapshot = replace(_snapshot(), full_screen_monitor="screen:Disconnected")
+    dialog = SettingsDialog(
+        snapshot, version="0.1.0", storage_path=tmp_path, startup_supported=True,
+    )
+    try:
+        assert dialog.values().full_screen_monitor == "screen:Disconnected"
+        assert "not connected" in dialog.full_screen_monitor.currentText()
+        dialog.full_screen_monitor.setCurrentIndex(dialog.full_screen_monitor.findData("pointer"))
+        assert dialog.values().full_screen_monitor == "pointer"
+        dialog.restore_defaults()
+        assert dialog.values().full_screen_monitor == "primary"
+    finally:
+        dialog.close()
 
 
 def test_settings_dialog_returns_all_selected_values(

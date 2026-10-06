@@ -22,6 +22,7 @@ game window. The prototype is designed for quick interaction and stores its data
 ## Prototype features
 
 - Capture a region at the monitor's native pixel resolution and pin it above the game
+- Instantly capture a full monitor to the library without selection, countdown, or focus changes
 - Choose whether captures are pinned, saved quietly, or reviewed before saving
 - Delay area selection by 3 or 5 seconds and return directly to the game after capture
 - Import PNG, JPEG, BMP, and WebP images by file picker, drag and drop, or clipboard paste
@@ -80,6 +81,7 @@ game window. The prototype is designed for quick interaction and stores its data
 | `Ctrl+Shift+G` | Show or hide the control panel |
 | `Ctrl+Shift+F` | Open the quick card finder |
 | `Ctrl+Shift+S` | Capture a screen region |
+| `Ctrl+Shift+D` | Save a full-monitor screenshot immediately |
 | `Ctrl+Shift+L` | Toggle click-through mode for all pins |
 | `Ctrl+Shift+M` | Enter or leave focus mode |
 | `Ctrl+Shift+Left` | Show the previous pinned card |
@@ -89,6 +91,19 @@ game window. The prototype is designed for quick interaction and stores its data
 Choose **Keyboard shortcuts…** in the control panel or tray menu to replace any default.
 Changes are saved locally and take effect immediately. Gaming Buddy prevents duplicate,
 empty, and modifier-free shortcuts.
+
+Full-monitor capture always saves a lossless PNG to the current game profile without
+opening review or creating a new pin. Choose the primary monitor, the monitor under
+the pointer, or a specific connected monitor in **Settings > Capture**. The panel and
+visible pins are hidden briefly before capture; pins return without activation, and
+the panel stays hidden. Capture notifications follow the existing notification setting
+and may be suppressed by Windows Focus Assist.
+
+The area-capture delay and review settings do not apply to full-monitor capture. If a
+selected monitor is disconnected, no other display is captured automatically. Choose
+another monitor in Settings before retrying. Monitor selection is device-specific and
+is not included in portable backups. When upgrading an existing shortcut setup, a free
+alternative is assigned if `Ctrl+Shift+D` is already used by another action.
 
 ## Run from source
 

@@ -7,6 +7,7 @@ SHORTCUT_LABELS = {
     "toggle_panel": "Show or hide panel",
     "quick_finder": "Find a saved card",
     "capture_area": "Capture screen area",
+    "capture_screen": "Capture full monitor",
     "toggle_click_through": "Toggle click-through pins",
     "toggle_focus_mode": "Toggle focus mode",
     "previous_pin": "Show previous pinned card",
@@ -18,6 +19,7 @@ DEFAULT_SHORTCUTS = {
     "toggle_panel": "Ctrl+Shift+G",
     "quick_finder": "Ctrl+Shift+F",
     "capture_area": "Ctrl+Shift+S",
+    "capture_screen": "Ctrl+Shift+D",
     "toggle_click_through": "Ctrl+Shift+L",
     "toggle_focus_mode": "Ctrl+Shift+M",
     "previous_pin": "Ctrl+Shift+Left",
@@ -118,6 +120,21 @@ def validate_shortcuts(shortcuts: dict[str, str]) -> dict[str, str]:
     return normalized
 
 
+def complete_shortcuts(saved: dict[str, str]) -> dict[str, str]:
+    """Add a new action without taking a combination already used by an older setup."""
+    shortcuts = DEFAULT_SHORTCUTS | saved
+    if "capture_screen" not in saved:
+        used = {parse_shortcut(value)[1] for key, value in shortcuts.items()
+                if key != "capture_screen"}
+        candidates = ["Ctrl+Shift+D", "Ctrl+Alt+Shift+D"] + [
+            f"Ctrl+Alt+Shift+F{number}" for number in range(1, 25)
+        ]
+        shortcuts["capture_screen"] = next(
+            value for value in candidates if parse_shortcut(value)[1] not in used
+        )
+    return validate_shortcuts(shortcuts)
+
+
 def shortcut_hooks(shortcuts: dict[str, str]) -> dict[str, str]:
     normalized = validate_shortcuts(shortcuts)
     return {action: parse_shortcut(value)[1] for action, value in normalized.items()}
@@ -127,6 +144,7 @@ class GlobalHotkeys(QObject):
     toggle_panel = Signal()
     quick_finder = Signal()
     capture_area = Signal()
+    capture_screen = Signal()
     toggle_click_through = Signal()
     toggle_focus_mode = Signal()
     previous_pin = Signal()
@@ -151,6 +169,7 @@ class GlobalHotkeys(QObject):
                     hooks["toggle_panel"]: self.toggle_panel.emit,
                     hooks["quick_finder"]: self.quick_finder.emit,
                     hooks["capture_area"]: self.capture_area.emit,
+                    hooks["capture_screen"]: self.capture_screen.emit,
                     hooks["toggle_click_through"]: self.toggle_click_through.emit,
                     hooks["toggle_focus_mode"]: self.toggle_focus_mode.emit,
                     hooks["previous_pin"]: self.previous_pin.emit,

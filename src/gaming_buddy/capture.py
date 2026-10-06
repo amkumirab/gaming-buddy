@@ -6,12 +6,14 @@ from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QCloseEvent,
     QColor,
+    QCursor,
     QGuiApplication,
     QImage,
     QKeyEvent,
     QMouseEvent,
     QPainter,
     QPen,
+    QScreen,
 )
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -89,6 +91,38 @@ class DesktopSnapshot:
 
         painter.end()
         return output
+
+
+def select_monitor(preference: str = "primary") -> QScreen:
+    """Resolve a monitor before hiding the panel; never substitute a missing saved display."""
+    screens = QGuiApplication.screens()
+    if not screens:
+        raise RuntimeError("No display is available.")
+    if preference not in {"primary", "pointer"} and not preference.startswith("screen:"):
+        raise RuntimeError("The monitor setting is invalid. Choose a monitor in Settings > Capture.")
+    if preference.startswith("screen:"):
+        name = preference.removeprefix("screen:")
+        for screen in screens:
+            if screen.name() == name:
+                return screen
+        raise RuntimeError(
+            "The selected monitor is not connected. Choose another in Settings > Capture."
+        )
+    if preference == "pointer":
+        position = QCursor.pos()
+        for screen in screens:
+            if screen.geometry().contains(position):
+                return screen
+    return QGuiApplication.primaryScreen() or screens[0]
+
+
+def grab_monitor(screen: QScreen) -> QImage:
+    """Capture physical pixels without rescaling or opening a selection overlay."""
+    image = screen.grabWindow(0).toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+    if image.isNull():
+        raise RuntimeError("The monitor could not be captured. Try borderless or windowed mode.")
+    image.setDevicePixelRatio(1.0)
+    return image
 
 
 def grab_virtual_desktop() -> DesktopSnapshot:
