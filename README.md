@@ -66,6 +66,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Keep restored pins visible when monitors or resolutions change
 - Persist everything locally in SQLite
 - Configurable global shortcuts and a system tray menu
+- Single-instance startup: opening the app again restores the existing control panel
 - Central settings window for overlay, profile, startup, update, and shortcut preferences
 - Local troubleshooting checks and a privacy-safe diagnostic report for support
 - First-run setup guide with a quick overview of capture, pins, and shortcuts
@@ -75,6 +76,12 @@ game window. The prototype is designed for quick interaction and stores its data
 - No code injection and no game-memory access
 
 ## Shortcuts
+
+Gaming Buddy runs once per Windows user. Opening another copy shows the existing panel,
+including when it is hidden or minimized, without adding another tray icon or shortcut
+listener. If the running copy is unresponsive, startup shows a message instead of opening
+a competing copy. Wait and retry, or close Gaming Buddy in Task Manager before reopening it.
+After an unexpected exit, the next launch recovers the startup lock automatically.
 
 | Shortcut | Action |
 | --- | --- |
@@ -237,6 +244,7 @@ Captured images and the SQLite database are stored under:
 gaming-buddy/
 ├── src/gaming_buddy/
 │   ├── app.py          # Application entry point
+│   ├── single_instance.py # Per-user startup lock and local panel activation
 │   ├── dashboard.py    # Main control panel
 │   ├── card_preview.py # Library image, note, and metadata preview panel
 │   ├── capture.py      # Screen-region capture

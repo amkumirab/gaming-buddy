@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QGuiApplication, QIcon
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gaming_buddy.dashboard import Dashboard
 from gaming_buddy.hotkeys import GlobalHotkeys
 from gaming_buddy.paths import asset_path, ensure_data_dirs
+from gaming_buddy.single_instance import InstanceError, SingleInstance
 from gaming_buddy.storage import CardStore
 from gaming_buddy.theme import STYLESHEET
 
@@ -25,7 +27,29 @@ def main() -> int:
     app.setWindowIcon(QIcon(str(asset_path("app-icon.png"))))
 
     base_dir, captures_dir = ensure_data_dirs()
-    store = CardStore(base_dir / "gaming-buddy.sqlite3")
+    instance = SingleInstance(base_dir)
+    try:
+        try:
+            if not instance.claim_or_notify():
+                return 0
+        except InstanceError as error:
+            QMessageBox.warning(None, "Gaming Buddy", str(error))
+            return 1
+        store = CardStore(base_dir / "gaming-buddy.sqlite3")
+        try:
+            return _run_dashboard(app, store, captures_dir, instance)
+        finally:
+            store.close()
+    finally:
+        instance.close()
+
+
+def _run_dashboard(
+    app: QApplication,
+    store: CardStore,
+    captures_dir: Path,
+    instance: SingleInstance,
+) -> int:
     dashboard = Dashboard(store, captures_dir)
     hotkeys = GlobalHotkeys(dashboard.shortcuts)
     dashboard.shortcut_status = lambda: hotkeys.running
@@ -44,12 +68,14 @@ def main() -> int:
     dashboard.shortcuts_changed.connect(hotkeys.update_shortcuts)
     dashboard.request_quit.connect(hotkeys.stop)
 
-    hotkeys.start()
-    dashboard.show()
-    exit_code = app.exec()
-    hotkeys.stop()
-    store.close()
-    return exit_code
+    try:
+        hotkeys.start()
+        dashboard.show()
+        instance.activation_requested.connect(dashboard.show_panel)
+        instance.set_ready()
+        return app.exec()
+    finally:
+        hotkeys.stop()
 
 
 if __name__ == "__main__":

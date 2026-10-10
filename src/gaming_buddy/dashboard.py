@@ -3420,6 +3420,8 @@ class Dashboard(QMainWindow):
 
     def show_panel(self) -> None:
         self.game_detector.poll_now()
+        if self.isMinimized():
+            self.showNormal()
         self.show()
         self.raise_()
         self.activateWindow()
