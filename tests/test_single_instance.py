@@ -28,6 +28,35 @@ guard.close()
 """
 
 
+@pytest.fixture(autouse=True)
+def unchanged_application_state(qt_application):
+    def state():
+        return (
+            qt_application.applicationName(),
+            qt_application.organizationName(),
+            qt_application.styleSheet(),
+            qt_application.quitOnLastWindowClosed(),
+            qt_application.windowIcon().cacheKey(),
+        )
+
+    before = state()
+    yield
+    assert state() == before, "Startup unit tests must not mutate the shared Qt application"
+
+
+@pytest.fixture
+def startup_application(monkeypatch):
+    from unittest.mock import Mock
+
+    import gaming_buddy.app as app_module
+
+    application = Mock()
+    monkeypatch.setattr(app_module, "QApplication", lambda _: application)
+    monkeypatch.setattr(app_module, "QCoreApplication", Mock())
+    monkeypatch.setattr(app_module, "QGuiApplication", Mock())
+    return application
+
+
 @pytest.fixture
 def children():
     processes = []
@@ -130,15 +159,15 @@ def test_unresponsive_owner_is_not_replaced(tmp_path):
         lock.unlock()
 
 
-def test_secondary_startup_does_not_open_storage_or_register_shortcuts(tmp_path, monkeypatch):
+def test_secondary_startup_does_not_open_storage_or_register_shortcuts(
+    tmp_path,
+    monkeypatch,
+    startup_application,
+):
     from unittest.mock import Mock
-
-    from PySide6.QtWidgets import QApplication
 
     import gaming_buddy.app as app_module
 
-    application = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(app_module, "QApplication", lambda _: application)
     guard = Mock()
     guard.claim_or_notify.return_value = False
     monkeypatch.setattr(app_module, "SingleInstance", lambda _: guard)
@@ -151,14 +180,11 @@ def test_secondary_startup_does_not_open_storage_or_register_shortcuts(tmp_path,
     guard.close.assert_called_once()
 
 
-def test_startup_failure_releases_the_instance_lock(tmp_path, monkeypatch):
+def test_startup_failure_releases_the_instance_lock(tmp_path, monkeypatch, startup_application):
     from PySide6.QtCore import QLockFile
-    from PySide6.QtWidgets import QApplication
 
     import gaming_buddy.app as app_module
 
-    application = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(app_module, "QApplication", lambda _: application)
     monkeypatch.setattr(app_module, "ensure_data_dirs", lambda: (tmp_path, tmp_path))
 
     def failed_store(_path):
@@ -285,15 +311,15 @@ def test_listen_failure_releases_lock(tmp_path, monkeypatch):
         guard.close()
 
 
-def test_lock_access_error_is_reported_without_opening_storage(tmp_path, monkeypatch):
+def test_lock_access_error_is_reported_without_opening_storage(
+    tmp_path,
+    monkeypatch,
+    startup_application,
+):
     from unittest.mock import Mock
-
-    from PySide6.QtWidgets import QApplication
 
     import gaming_buddy.app as app_module
 
-    application = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(app_module, "QApplication", lambda _: application)
     guard = Mock()
     guard.claim_or_notify.side_effect = InstanceError("Check your data folder permissions.")
     monkeypatch.setattr(app_module, "SingleInstance", lambda _: guard)

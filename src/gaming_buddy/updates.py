@@ -272,13 +272,15 @@ class UpdateController(QObject):
         try:
             release = fetch_latest_release()
             if is_newer_version(release.version):
-                self.update_available.emit(release)
+                signal, result = self.update_available, release
             else:
-                self.up_to_date.emit(release)
+                signal, result = self.up_to_date, release
         except (UpdateError, HTTPError, URLError, OSError, TimeoutError) as exc:
-            self.check_failed.emit(_friendly_network_error(exc))
+            signal, result = self.check_failed, _friendly_network_error(exc)
         finally:
             self._checking = False
+        # Result handlers may immediately start a download or another check.
+        signal.emit(result)
 
     def _download_worker(self, release: ReleaseInfo, destination_dir: Path) -> None:
         try:

@@ -347,6 +347,17 @@ python -m pytest
 python -m ruff check .
 ```
 
+Test success requires both passing assertions and a zero process exit code. The shared
+Qt fixture keeps a strong application reference for the whole test process.
+Startup unit tests use an isolated application double so they cannot
+change the shared GUI's name, style, icon, or exit behavior. A subprocess lifecycle test
+runs the real app against disposable data, checks tray and shortcut readiness, opens a
+second copy, and verifies normal shutdown. It does not test the packaged installer.
+The update dialog also has an isolated native Qt shutdown regression test. Its button
+handlers use bound receiver methods rather than lambdas that retain the window until
+finalization. Update results are emitted only after the checking state has been cleared,
+so a result handler can safely start the next operation.
+
 Build the Windows application, installer, and SHA-256 checksum with:
 
 ```powershell

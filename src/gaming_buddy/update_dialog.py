@@ -65,11 +65,12 @@ class UpdateDialog(QDialog):
         later = QPushButton("Later")
         later.clicked.connect(self.reject)
         view = QPushButton("View release page")
-        view.clicked.connect(lambda: self._choose(UpdateAction.VIEW_RELEASE))
+        # Bound receiver methods avoid Qt-owned lambdas retaining the dialog until shutdown.
+        view.clicked.connect(self._view_release)
         download = QPushButton("Download and install")
         download.setObjectName("primary")
         download.setDefault(True)
-        download.clicked.connect(lambda: self._choose(UpdateAction.DOWNLOAD))
+        download.clicked.connect(self._download)
         buttons.addStretch(1)
         buttons.addWidget(later)
         buttons.addWidget(view)
@@ -81,3 +82,9 @@ class UpdateDialog(QDialog):
     def _choose(self, action: UpdateAction) -> None:
         self.action = action
         self.accept()
+
+    def _view_release(self) -> None:
+        self._choose(UpdateAction.VIEW_RELEASE)
+
+    def _download(self) -> None:
+        self._choose(UpdateAction.DOWNLOAD)
