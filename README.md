@@ -381,6 +381,29 @@ checks required before pushing a release tag.
 Tagged builds create a draft release. Publish the draft only after desktop acceptance
 of those exact installer bytes, then link README to the downloadable official release.
 
+## Closing the application
+
+Use **Quit** in the tray menu to close Gaming Buddy. Closing the main window still hides
+it in the tray. Quit pauses shortcuts, stops pending captures, and cancels update downloads
+cooperatively. If an update check, download, or text-recognition worker is still running,
+the app displays **Finishing tasks…** and stays responsive until it finishes.
+
+Choose **Stay open** to cancel closing. Pending captures and cancelled downloads do not
+restart automatically, but shortcuts, note autosave, and normal controls are restored.
+If background work has not finished after 60 seconds, the app stays open without forcibly
+terminating any thread. Wait for the task to finish and try Quit again.
+
+Before the final exit, Gaming Buddy saves the quick-note draft, pin layout, and window
+geometry. A draft or pin-layout save failure keeps the app open so you can resolve folder
+access or copy your note. Unreviewed extracted screenshot text is not automatically saved
+to a card. A confirmed update installer starts only after background work and local saves
+have completed; cancelling closing also cancels that pending installer launch.
+
+Lifecycle tests use real worker threads and isolated app processes with controlled offline
+backends. These tests do not replace a packaged-installer or clean-machine desktop test.
+Qt thread cleanup follows the completion semantics in the
+[QThread documentation](https://doc.qt.io/qt-6/qthread.html#isFinished).
+
 ## Ownership and license
 
 Copyright © 2026 **Amir Ali Mirab Zadeh Ardekani**. All rights reserved.
