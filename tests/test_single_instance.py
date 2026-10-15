@@ -255,6 +255,7 @@ def test_existing_minimized_panel_is_restored():
 
     application = QApplication.instance() or QApplication([])
     panel = QWidget()
+    panel._quitting = False
     panel.game_detector = SimpleNamespace(poll_now=lambda: None)
     try:
         panel.showMinimized()

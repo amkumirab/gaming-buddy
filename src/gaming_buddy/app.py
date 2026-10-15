@@ -53,6 +53,7 @@ def _run_dashboard(
     dashboard = Dashboard(store, captures_dir)
     hotkeys = GlobalHotkeys(dashboard.shortcuts)
     dashboard.shortcut_status = lambda: hotkeys.running
+    dashboard.shortcut_shutdown_ready = lambda: hotkeys.shutdown_ready
     hotkeys.toggle_panel.connect(dashboard.toggle_panel)
     hotkeys.quick_finder.connect(dashboard.show_quick_finder)
     hotkeys.capture_area.connect(dashboard.start_capture)
@@ -67,6 +68,8 @@ def _run_dashboard(
     dashboard.shortcut_editing_cancelled.connect(hotkeys.start)
     dashboard.shortcuts_changed.connect(hotkeys.update_shortcuts)
     dashboard.request_quit.connect(hotkeys.stop)
+    dashboard.shutdown_started.connect(hotkeys.begin_shutdown)
+    dashboard.shutdown_cancelled.connect(hotkeys.cancel_shutdown)
 
     try:
         hotkeys.start()

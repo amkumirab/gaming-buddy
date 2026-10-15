@@ -111,6 +111,7 @@ from gaming_buddy.profiles import (
 from gaming_buddy.quick_finder import QuickFinderDialog, updated_search_history
 from gaming_buddy.settings_dialog import SettingsDialog, SettingsSnapshot
 from gaming_buddy.shortcut_dialog import ShortcutDialog
+from gaming_buddy.shutdown import ShutdownController
 from gaming_buddy.startup import StartupError, StartupManager
 from gaming_buddy.storage import CardStore
 from gaming_buddy.tags import format_tags
@@ -139,6 +140,8 @@ from gaming_buddy.workspace_presets import PresetPinLayout, WorkspacePreset
 
 class Dashboard(QMainWindow):
     request_quit = Signal()
+    shutdown_started = Signal()
+    shutdown_cancelled = Signal()
     shortcut_editing_started = Signal()
     shortcut_editing_cancelled = Signal()
     shortcuts_changed = Signal(dict)
@@ -149,6 +152,7 @@ class Dashboard(QMainWindow):
         self.captures_dir = captures_dir
         self.diagnostic_history = DiagnosticHistory()
         self.shortcut_status: Callable[[], bool] | None = None
+        self.shortcut_shutdown_ready: Callable[[], bool] | None = None
         self.settings = QSettings("GamingBuddy", "GamingBuddy")
         self.startup_manager = StartupManager()
         self.shortcuts = self._load_shortcuts()
@@ -176,6 +180,19 @@ class Dashboard(QMainWindow):
         self._capture_in_progress = False
         self._capture_panel_was_visible = False
         self._really_quit = False
+        self._quitting = False
+        self._shutdown_progress: QProgressDialog | None = None
+        self._pending_installer: str | None = None
+        self._capture_review: QMessageBox | None = None
+        self._capture_timer = QTimer(self)
+        self._capture_timer.setSingleShot(True)
+        self._capture_timer.timeout.connect(self._open_capture_overlay)
+        self._startup_timers: list[QTimer] = []
+        self._suspended_timers: list[tuple[QTimer, int]] = []
+        self.shutdown_controller = ShutdownController(self._background_tasks_finished, self)
+        self.shutdown_controller.finished.connect(self._finish_quit)
+        self.shutdown_controller.cancelled.connect(self._cancel_quit)
+        self.shutdown_controller.timed_out.connect(self._quit_timed_out)
         self._last_deleted_card_id: int | None = None
         self.update_controller = UpdateController(self)
         self.update_controller.update_available.connect(self._on_update_available)
@@ -208,11 +225,16 @@ class Dashboard(QMainWindow):
         self._restore_settings()
         self._restore_note_draft()
         self.refresh_cards()
-        QTimer.singleShot(0, self._purge_expired_trash)
-        QTimer.singleShot(0, self.restore_workspace)
-        QTimer.singleShot(0, self.game_detector.start)
-        QTimer.singleShot(350, self._show_first_run_setup)
-        QTimer.singleShot(10_000, self._check_for_updates_automatically)
+        for delay, callback in (
+            (0, self._purge_expired_trash), (0, self.restore_workspace),
+            (0, self.game_detector.start), (350, self._show_first_run_setup),
+            (10_000, self._check_for_updates_automatically),
+        ):
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(callback)
+            self._startup_timers.append(timer)
+            timer.start(delay)
 
     def _configure_button(
         self,
@@ -1207,13 +1229,15 @@ class Dashboard(QMainWindow):
         self.statusBar().showMessage(message, 2500)
 
     def _check_for_updates_automatically(self) -> None:
-        if not self.auto_update_checks_action.isChecked():
+        if self._quitting or not self.auto_update_checks_action.isChecked():
             return
         last_attempt = str(self.settings.value("updates/last_attempt", ""))
         if should_check_automatically(last_attempt):
             self._start_update_check(manual=False)
 
     def check_for_updates(self, _checked: bool = False) -> None:
+        if self._quitting:
+            return
         if self._pending_update is not None and is_newer_version(
             self._pending_update.version
         ):
@@ -1222,6 +1246,8 @@ class Dashboard(QMainWindow):
         self._start_update_check(manual=True)
 
     def _start_update_check(self, *, manual: bool) -> None:
+        if self._quitting:
+            return
         if not self.update_controller.check_for_updates():
             if manual:
                 self.statusBar().showMessage("An update task is already running", 2500)
@@ -1233,6 +1259,8 @@ class Dashboard(QMainWindow):
             self.statusBar().showMessage("Checking for updates…")
 
     def _on_update_available(self, release: ReleaseInfo) -> None:
+        if self._quitting:
+            return
         self._pending_update = release
         self.update_button.setText(f"Update {release.version}")
         self.update_button.setToolTip("Review and install the available update")
@@ -1249,6 +1277,8 @@ class Dashboard(QMainWindow):
         self._update_check_manual = False
 
     def _on_update_up_to_date(self, _release: ReleaseInfo) -> None:
+        if self._quitting:
+            return
         self._pending_update = None
         self.update_button.setText(f"v{__version__}")
         self.update_button.setToolTip("Check for Gaming Buddy updates")
@@ -1262,6 +1292,8 @@ class Dashboard(QMainWindow):
         self._update_check_manual = False
 
     def _on_update_check_failed(self, message: str) -> None:
+        if self._quitting:
+            return
         self.diagnostic_history.record(IssueKind.UPDATE_CHECK)
         if self._update_check_manual:
             QMessageBox.warning(self, "Update check failed", message)
@@ -1270,6 +1302,8 @@ class Dashboard(QMainWindow):
     def _show_update_dialog(self, release: ReleaseInfo) -> None:
         dialog = UpdateDialog(__version__, release, self)
         if not dialog.exec() or dialog.action is None:
+            return
+        if self._quitting:
             return
         if dialog.action is UpdateAction.VIEW_RELEASE:
             if not QDesktopServices.openUrl(QUrl(release.page_url)):
@@ -1282,6 +1316,8 @@ class Dashboard(QMainWindow):
         self._download_update(release)
 
     def _download_update(self, release: ReleaseInfo) -> None:
+        if self._quitting:
+            return
         progress = QProgressDialog("Preparing update download…", "Cancel", 0, 100, self)
         progress.setWindowTitle(f"Downloading Gaming Buddy {release.version}")
         progress.setWindowModality(Qt.WindowModality.WindowModal)
@@ -1309,6 +1345,8 @@ class Dashboard(QMainWindow):
             progress.setLabelText("Downloading update…")
 
     def _on_update_download_failed(self, message: str) -> None:
+        if self._quitting:
+            return
         self._close_update_progress()
         if message == "Update download cancelled.":
             self.statusBar().showMessage(message, 2500)
@@ -1317,12 +1355,15 @@ class Dashboard(QMainWindow):
         QMessageBox.warning(self, "Update download failed", message)
 
     def _on_update_download_ready(self, installer_path: str, release: ReleaseInfo) -> None:
+        if self._quitting:
+            return
         self._close_update_progress()
         answer = QMessageBox.question(
             self,
             "Install update now?",
             f"Gaming Buddy {release.version} was downloaded and verified.\n\n"
-            "The application will close before the installer starts. Your saved cards, "
+            "Gaming Buddy will finish background work and save your data before starting "
+            "the installer and closing. Your saved cards, "
             "screenshots, and settings will be kept.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Yes,
@@ -1330,15 +1371,9 @@ class Dashboard(QMainWindow):
         if answer != QMessageBox.StandardButton.Yes:
             self.statusBar().showMessage("Verified update saved for later", 3000)
             return
-        started = QProcess.startDetached(installer_path, [])
-        launch_succeeded = started[0] if isinstance(started, tuple) else bool(started)
-        if not launch_succeeded:
-            QMessageBox.warning(
-                self,
-                "Could not start installer",
-                f"The verified installer is available at:\n{installer_path}",
-            )
+        if self._quitting:
             return
+        self._pending_installer = installer_path
         self.quit_app()
 
     def _close_update_progress(self) -> None:
@@ -1669,7 +1704,7 @@ class Dashboard(QMainWindow):
             self.statusBar().showMessage(str(error), 3500)
         self.note_draft_bar.hide()
 
-    def _save_note_draft(self) -> None:
+    def _save_note_draft(self) -> bool:
         try:
             draft = self.note_draft_store.save(
                 self.note_input.toPlainText(),
@@ -1678,12 +1713,13 @@ class Dashboard(QMainWindow):
         except DraftError as error:
             self.diagnostic_history.record(IssueKind.DRAFT)
             self.statusBar().showMessage(str(error), 3500)
-            return
+            return False
         if draft is None:
             self.note_draft_bar.hide()
-            return
+            return True
         self.note_draft_label.setText("Draft saved locally")
         self.note_draft_bar.show()
+        return True
 
     def _restore_note_draft(self) -> None:
         draft = self.note_draft_store.load()
@@ -1774,6 +1810,8 @@ class Dashboard(QMainWindow):
         return True
 
     def start_full_screen_capture(self, _checked: bool = False) -> None:
+        if self._quitting:
+            return
         if self._capture_in_progress:
             self.statusBar().showMessage("A capture is already in progress", 2500)
             return
@@ -1805,6 +1843,8 @@ class Dashboard(QMainWindow):
         self._save_capture(image, instant=True, game=game)
 
     def start_capture(self, _checked: bool = False) -> None:
+        if self._quitting:
+            return
         if self._capture_in_progress:
             self.statusBar().showMessage("A capture is already in progress", 2500)
             return
@@ -1825,11 +1865,17 @@ class Dashboard(QMainWindow):
                 QSystemTrayIcon.MessageIcon.Information,
                 min(4000, delay_seconds * 1000),
             )
-        QTimer.singleShot(capture_start_delay_ms(delay_seconds), self._open_capture_overlay)
+        self._capture_timer.start(capture_start_delay_ms(delay_seconds))
 
     def _open_capture_overlay(self) -> None:
+        if self._quitting:
+            return
         try:
-            self.capture_overlay = begin_capture()
+            overlay = begin_capture()
+            if self._quitting:
+                overlay.close()
+                return
+            self.capture_overlay = overlay
             self.capture_overlay.selected.connect(self._save_capture)
             self.capture_overlay.cancelled.connect(self._capture_cancelled)
         except RuntimeError as exc:
@@ -1839,6 +1885,8 @@ class Dashboard(QMainWindow):
             QMessageBox.warning(self, "Capture failed", str(exc))
 
     def _save_capture(self, image: QImage, *, instant: bool = False, game: str | None = None) -> None:
+        if self._quitting:
+            return
         pin_capture = True
         action = normalize_capture_action(
             self.settings.value("capture/action", CaptureAction.SAVE_AND_PIN.value)
@@ -1849,6 +1897,8 @@ class Dashboard(QMainWindow):
             pin_capture = False
         elif action is CaptureAction.REVIEW:
             reviewed = self._review_capture(image)
+            if self._quitting:
+                return
             if reviewed is None:
                 self._capture_cancelled()
                 return
@@ -1935,7 +1985,11 @@ class Dashboard(QMainWindow):
         pin_button = box.addButton("Save and pin", QMessageBox.ButtonRole.AcceptRole)
         save_button = box.addButton("Save only", QMessageBox.ButtonRole.ActionRole)
         box.addButton("Discard", QMessageBox.ButtonRole.RejectRole)
-        box.exec()
+        self._capture_review = box
+        try:
+            box.exec()
+        finally:
+            self._capture_review = None
         clicked = box.clickedButton()
         if clicked is pin_button:
             return True
@@ -1946,6 +2000,8 @@ class Dashboard(QMainWindow):
     def _capture_cancelled(self) -> None:
         self._capture_in_progress = False
         self.capture_overlay = None
+        if self._quitting:
+            return
         if self._capture_panel_was_visible:
             self.show_panel()
         else:
@@ -3037,6 +3093,8 @@ class Dashboard(QMainWindow):
         self.statusBar().showMessage("Extracted text copied to clipboard", 2500)
 
     def _extract_image_text(self, card: Card) -> None:
+        if self._quitting:
+            return
         if card.kind is not CardKind.IMAGE or not Path(card.image_path).is_file():
             QMessageBox.warning(
                 self,
@@ -3081,6 +3139,8 @@ class Dashboard(QMainWindow):
         dialog.activateWindow()
 
     def _save_extracted_text(self, card: Card, dialog: TextRecognitionDialog) -> None:
+        if self._quitting:
+            return
         if card.id is None:
             return
         stored = self.store.get(card.id)
@@ -3408,6 +3468,8 @@ class Dashboard(QMainWindow):
             self.statusBar().showMessage("Pinned workspace restored", 2500)
 
     def toggle_panel(self) -> None:
+        if self._quitting:
+            return
         self.restore_pin_cycle(show_message=False)
         if self.focus_mode.active:
             self.set_focus_mode(False)
@@ -3419,6 +3481,8 @@ class Dashboard(QMainWindow):
             self.show_panel()
 
     def show_panel(self) -> None:
+        if self._quitting:
+            return
         self.game_detector.poll_now()
         if self.isMinimized():
             self.showNormal()
@@ -3427,6 +3491,8 @@ class Dashboard(QMainWindow):
         self.activateWindow()
 
     def show_quick_finder(self) -> None:
+        if self._quitting:
+            return
         existing = self._quick_finder
         if existing is not None and existing.isVisible():
             existing.show()
@@ -3519,6 +3585,7 @@ class Dashboard(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         self.settings.setValue("window_geometry", self.saveGeometry())
         if self._really_quit:
+            self._stop_deferred_work()
             event.accept()
         else:
             event.ignore()
@@ -3531,12 +3598,126 @@ class Dashboard(QMainWindow):
             )
 
     def quit_app(self) -> None:
+        if self._quitting or self._really_quit:
+            return
+        self._quitting = True
+        self.shutdown_started.emit()
+        self.tray.contextMenu().setEnabled(False)
+        self._suspended_timers = [
+            (timer, max(0, timer.remainingTime()))
+            for timer in (*self._startup_timers, self.note_draft_timer, self.undo_timer)
+            if timer.isActive()
+        ]
+        self._stop_deferred_work()
         self.note_draft_timer.stop()
-        self._save_note_draft()
+        self.undo_timer.stop()
         self.game_detector.stop()
-        self.update_controller.cancel_download()
-        for pin in self.pins.values():
-            pin.save_now()
+        self.update_controller.begin_shutdown()
+        if self._text_recognition_dialog is not None:
+            self._text_recognition_dialog.begin_shutdown()
+        self._update_check_manual = False
+        self._close_update_progress()
+        if not self._background_tasks_finished():
+            progress = QProgressDialog(
+                "Finishing tasks…\nWaiting for background work before closing.",
+                "Stay open", 0, 0, self,
+            )
+            progress.setWindowTitle("Closing Gaming Buddy")
+            progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+            progress.setMinimumDuration(0)
+            progress.setAutoClose(False)
+            progress.canceled.connect(self.shutdown_controller.cancel)
+            self._shutdown_progress = progress
+            progress.show()
+        self.shutdown_controller.request()
+
+    def _stop_deferred_work(self) -> None:
+        for timer in self._startup_timers:
+            timer.stop()
+        self._capture_timer.stop()
+        overlay = self.capture_overlay
+        self.capture_overlay = None
+        self._capture_in_progress = False
+        if overlay is not None:
+            overlay.close()
+        if self._capture_review is not None:
+            self._capture_review.reject()
+
+    def _background_tasks_finished(self) -> bool:
+        dialog = self._text_recognition_dialog
+        return (
+            self.update_controller.shutdown_ready
+            and (dialog is None or dialog.shutdown_ready)
+            and (self.shortcut_shutdown_ready is None or self.shortcut_shutdown_ready())
+        )
+
+    def _close_shutdown_progress(self) -> None:
+        progress = self._shutdown_progress
+        self._shutdown_progress = None
+        if progress is not None:
+            blocker = QSignalBlocker(progress)
+            progress.close()
+            del blocker
+            progress.deleteLater()
+
+    def _cancel_quit(self) -> None:
+        self._quitting = False
+        self.tray.contextMenu().setEnabled(True)
+        self._pending_installer = None
+        self._close_shutdown_progress()
+        self.update_controller.cancel_shutdown()
+        if self._text_recognition_dialog is not None:
+            self._text_recognition_dialog.cancel_shutdown()
+        self.game_detector.start()
+        for timer, remaining_ms in self._suspended_timers:
+            timer.start(remaining_ms)
+        self._suspended_timers.clear()
+        self.shutdown_cancelled.emit()
+        self.statusBar().showMessage("Closing cancelled. Gaming Buddy is still running.", 4000)
+
+    def _quit_timed_out(self) -> None:
+        self._cancel_quit()
+        QMessageBox.warning(
+            self, "Background work is still running",
+            "Gaming Buddy stayed open because a background task did not finish within "
+            "60 seconds. Wait for it to finish, then try closing again.",
+        )
+
+    def _finish_quit(self) -> None:
+        self._close_shutdown_progress()
+        if not self._save_note_draft():
+            self.shutdown_controller.cancel()
+            QMessageBox.warning(
+                self, "Could not save before closing",
+                "The note draft could not be saved. Gaming Buddy stayed open so you can "
+                "copy your note or fix folder access before trying again.",
+            )
+            return
+        try:
+            for pin in self.pins.values():
+                pin.save_now()
+        except (sqlite3.Error, OSError):
+            self.shutdown_controller.cancel()
+            QMessageBox.warning(
+                self, "Could not save before closing",
+                "The pin layout could not be saved. Gaming Buddy stayed open. "
+                "Check access to your data folder before trying again.",
+            )
+            return
+        self.settings.setValue("window_geometry", self.saveGeometry())
+        self.settings.sync()
+        if self._pending_installer is not None:
+            installer_path = self._pending_installer
+            started = QProcess.startDetached(installer_path, [])
+            launch_succeeded = started[0] if isinstance(started, tuple) else bool(started)
+            if not launch_succeeded:
+                self.shutdown_controller.cancel()
+                QMessageBox.warning(
+                    self, "Could not start installer",
+                    f"Gaming Buddy stayed open. The verified installer is available at:\n"
+                    f"{installer_path}",
+                )
+                return
         self._really_quit = True
         self.request_quit.emit()
         QApplication.quit()

@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings, QTimer
+from PySide6.QtCore import QSettings
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
@@ -145,9 +145,9 @@ def test_start_capture_uses_saved_delay_and_blocks_a_second_request(
             application.processEvents()
             scheduled: list[int] = []
             monkeypatch.setattr(
-                QTimer,
-                "singleShot",
-                lambda milliseconds, _callback: scheduled.append(milliseconds),
+                dashboard._capture_timer,
+                "start",
+                lambda milliseconds: scheduled.append(milliseconds),
             )
 
             dashboard.start_capture()
