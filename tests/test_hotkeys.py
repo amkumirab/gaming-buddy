@@ -93,3 +93,61 @@ def test_full_monitor_shortcut_emits_its_own_action(monkeypatch):
     callbacks["<ctrl>+<shift>+d"]()
     assert fired == ["screen"]
     hotkeys.stop()
+
+
+def test_shutdown_waits_for_stopped_listener_and_prevents_restart(monkeypatch):
+    listeners = []
+
+    class Listener:
+        def __init__(self, hooks):
+            self.alive = False
+            listeners.append(self)
+
+        def start(self):
+            self.alive = True
+
+        def stop(self):
+            pass  # Real hook cleanup can finish after stop() returns.
+
+        def is_alive(self):
+            return self.alive
+
+    monkeypatch.setattr(hotkeys_module.keyboard, "GlobalHotKeys", Listener)
+    hotkeys = GlobalHotkeys()
+    hotkeys.start()
+    hotkeys.begin_shutdown()
+    assert not hotkeys.running
+    assert not hotkeys.shutdown_ready
+    hotkeys.start()
+    assert len(listeners) == 1
+    listeners[0].alive = False
+    assert hotkeys.shutdown_ready
+    hotkeys.cancel_shutdown()
+    assert hotkeys.running
+    assert len(listeners) == 2
+    listeners[1].alive = False
+    hotkeys.stop()
+
+
+def test_shortcut_resume_requested_during_exit_runs_after_exit_is_cancelled(monkeypatch):
+    class Listener:
+        def __init__(self, hooks):
+            self.alive = False
+
+        def start(self):
+            self.alive = True
+
+        def stop(self):
+            self.alive = False
+
+        def is_alive(self):
+            return self.alive
+
+    monkeypatch.setattr(hotkeys_module.keyboard, "GlobalHotKeys", Listener)
+    hotkeys = GlobalHotkeys()
+    hotkeys.begin_shutdown()
+    hotkeys.start()  # A settings dialog may request restart while exit is pending.
+    assert not hotkeys.running
+    hotkeys.cancel_shutdown()
+    assert hotkeys.running
+    hotkeys.stop()

@@ -51,6 +51,8 @@ class _RecognitionWorker(QObject):
 
 
 class TextRecognitionDialog(QDialog):
+    work_finished = Signal()
+
     def __init__(
         self,
         image_path: Path,
@@ -67,6 +69,14 @@ class TextRecognitionDialog(QDialog):
         self._recognizer = recognizer
         self._thread: QThread | None = None
         self._worker: _RecognitionWorker | None = None
+        self._shutting_down = False
+        self._retiring: list[tuple[QThread, _RecognitionWorker | None]] = []
+        self._cleanup_timer = QTimer(self)
+        self._cleanup_timer.setInterval(10)
+        self._cleanup_timer.timeout.connect(self._cleanup_threads)
+        self._auto_start_timer = QTimer(self)
+        self._auto_start_timer.setSingleShot(True)
+        self._auto_start_timer.timeout.connect(self.start_recognition)
 
         self.setWindowTitle("Extract screenshot text")
         self.setMinimumSize(560, 480)
@@ -131,7 +141,26 @@ class TextRecognitionDialog(QDialog):
         layout.addLayout(footer)
 
         if auto_start:
-            QTimer.singleShot(0, self.start_recognition)
+            self._auto_start_timer.start(0)
+
+    @property
+    def shutdown_ready(self) -> bool:
+        return self._thread is None and not self._retiring
+
+    def begin_shutdown(self) -> None:
+        self._shutting_down = True
+        self._auto_start_timer.stop()
+        self._update_controls()
+
+    def cancel_shutdown(self) -> None:
+        self._shutting_down = False
+        self._update_controls()
+
+    def _update_controls(self) -> None:
+        enabled = not self._shutting_down and self.shutdown_ready
+        self.recognize_button.setEnabled(enabled)
+        self.language.setEnabled(enabled)
+        self.dialog_buttons.setEnabled(enabled)
 
     @property
     def selected_language(self) -> str:
@@ -142,7 +171,7 @@ class TextRecognitionDialog(QDialog):
         return self.text.toPlainText().strip()
 
     def start_recognition(self) -> None:
-        if self._thread is not None:
+        if self._shutting_down or not self.shutdown_ready:
             return
         self.recognize_button.setEnabled(False)
         self.language.setEnabled(False)
@@ -187,13 +216,30 @@ class TextRecognitionDialog(QDialog):
     @Slot()
     def _recognition_finished(self) -> None:
         thread = self._thread
+        if thread is not None:
+            self._retiring.append((thread, self._worker))
         self._thread = None
         self._worker = None
-        self.recognize_button.setEnabled(True)
-        self.language.setEnabled(True)
-        self.dialog_buttons.setEnabled(True)
-        if thread is not None:
-            thread.deleteLater()
+        self._cleanup_threads()
+
+    def _cleanup_threads(self) -> None:
+        had_retiring = bool(self._retiring)
+        pending = []
+        for thread, worker in self._retiring:
+            # finished() can precede native cleanup; wait(0) does not block the GUI.
+            # https://doc.qt.io/qt-6/qthread.html#isFinished
+            if thread.wait(0):
+                thread.deleteLater()
+            else:
+                pending.append((thread, worker))
+        self._retiring = pending
+        if pending:
+            self._cleanup_timer.start()
+        else:
+            self._cleanup_timer.stop()
+        self._update_controls()
+        if had_retiring and not pending:
+            self.work_finished.emit()
 
     def copy_text(self) -> None:
         text = self.recognized_text
@@ -204,20 +250,23 @@ class TextRecognitionDialog(QDialog):
         self.status.setText("Text copied to the clipboard.")
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self._thread is not None and self._thread.isRunning():
+        if not self.shutdown_ready:
             self.status.setText("Wait for recognition to finish before closing this window.")
             event.ignore()
             return
+        self._auto_start_timer.stop()
         super().closeEvent(event)
 
     def accept(self) -> None:
-        if self._thread is not None and self._thread.isRunning():
+        if self._shutting_down or not self.shutdown_ready:
             self.status.setText("Wait for recognition to finish before saving.")
             return
+        self._auto_start_timer.stop()
         super().accept()
 
     def reject(self) -> None:
-        if self._thread is not None and self._thread.isRunning():
+        if not self.shutdown_ready:
             self.status.setText("Wait for recognition to finish before closing this window.")
             return
+        self._auto_start_timer.stop()
         super().reject()

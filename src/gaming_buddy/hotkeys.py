@@ -155,6 +155,9 @@ class GlobalHotkeys(QObject):
     def __init__(self, shortcuts: dict[str, str] | None = None) -> None:
         super().__init__()
         self._listener: keyboard.GlobalHotKeys | None = None
+        self._stopping: list[keyboard.GlobalHotKeys] = []
+        self._shutting_down = False
+        self._resume_after_shutdown = False
         self._shortcuts = validate_shortcuts(shortcuts or DEFAULT_SHORTCUTS)
 
     @property
@@ -162,6 +165,9 @@ class GlobalHotkeys(QObject):
         return self._listener is not None and self._listener.is_alive()
 
     def start(self) -> None:
+        if self._shutting_down:
+            self._resume_after_shutdown = True
+            return
         try:
             hooks = shortcut_hooks(self._shortcuts)
             self._listener = keyboard.GlobalHotKeys(
@@ -184,7 +190,25 @@ class GlobalHotkeys(QObject):
     def stop(self) -> None:
         if self._listener is not None:
             self._listener.stop()
+            self._stopping = [listener for listener in self._stopping if listener.is_alive()]
+            self._stopping.append(self._listener)
             self._listener = None
+
+    @property
+    def shutdown_ready(self) -> bool:
+        return not self.running and not any(listener.is_alive() for listener in self._stopping)
+
+    def begin_shutdown(self) -> None:
+        if not self._shutting_down:
+            self._resume_after_shutdown = self.running
+        self._shutting_down = True
+        self.stop()
+
+    def cancel_shutdown(self) -> None:
+        self._shutting_down = False
+        if self._resume_after_shutdown:
+            self._resume_after_shutdown = False
+            self.start()
 
     def update_shortcuts(self, shortcuts: dict[str, str]) -> None:
         self._shortcuts = validate_shortcuts(shortcuts)

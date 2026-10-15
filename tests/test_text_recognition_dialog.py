@@ -96,7 +96,7 @@ def test_dialog_runs_recognition_without_blocking_controls_forever(
     thread = dialog._thread
     assert thread is not None
     loop = QEventLoop()
-    thread.finished.connect(loop.quit)
+    dialog.work_finished.connect(loop.quit)
     QTimer.singleShot(2_000, loop.quit)
     loop.exec()
     application.processEvents()

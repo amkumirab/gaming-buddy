@@ -236,6 +236,26 @@ class UpdateController(QObject):
         self._checking = False
         self._downloading = False
         self._cancel_download = threading.Event()
+        self._shutting_down = False
+        self._threads: list[threading.Thread] = []
+
+    @property
+    def shutdown_ready(self) -> bool:
+        """A result signal or cleared busy flag does not prove a worker has exited."""
+        return not any(thread.is_alive() for thread in self._threads)
+
+    def begin_shutdown(self) -> None:
+        self._shutting_down = True
+        self.cancel_download()
+
+    def cancel_shutdown(self) -> None:
+        self._shutting_down = False
+
+    def _start_worker(self, target, *args) -> None:
+        self._threads = [thread for thread in self._threads if thread.is_alive()]
+        thread = threading.Thread(target=target, args=args, daemon=True)
+        self._threads.append(thread)
+        thread.start()
 
     @property
     def checking(self) -> bool:
@@ -246,22 +266,18 @@ class UpdateController(QObject):
         return self._downloading
 
     def check_for_updates(self) -> bool:
-        if self._checking or self._downloading:
+        if self._shutting_down or self._checking or self._downloading:
             return False
         self._checking = True
-        threading.Thread(target=self._check_worker, daemon=True).start()
+        self._start_worker(self._check_worker)
         return True
 
     def download_update(self, release: ReleaseInfo, destination_dir: Path) -> bool:
-        if self._checking or self._downloading:
+        if self._shutting_down or self._checking or self._downloading:
             return False
         self._downloading = True
         self._cancel_download.clear()
-        threading.Thread(
-            target=self._download_worker,
-            args=(release, destination_dir),
-            daemon=True,
-        ).start()
+        self._start_worker(self._download_worker, release, destination_dir)
         return True
 
     def cancel_download(self) -> None:
