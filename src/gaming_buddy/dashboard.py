@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QCheckBox,
+    QComboBox,
     QDockWidget,
     QFileDialog,
     QFrame,
@@ -93,6 +94,7 @@ from gaming_buddy.image_import import (
     local_image_paths,
     save_imported_image,
 )
+from gaming_buddy.library_sort import LIBRARY_SORT_OPTIONS, normalize_library_sort
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.note_drafts import DraftError, NoteDraftStore
 from gaming_buddy.onboarding import OnboardingDialog
@@ -833,7 +835,28 @@ class Dashboard(QMainWindow):
             "Search titles, note content, recognized screenshot text, tags, and game names."
         )
         self.search_cards.textChanged.connect(self.refresh_cards)
-        library_layout.addWidget(self.search_cards)
+        search_row = QHBoxLayout()
+        search_row.addWidget(self.search_cards, 1)
+        sort_label = QLabel("Sort by")
+        sort_label.setObjectName("muted")
+        self.library_sort = QComboBox()
+        self.library_sort.setAccessibleName("Sort saved cards")
+        self.library_sort.setAccessibleDescription(
+            "Choose Default, Newest first, Oldest first, or Title A–Z. "
+            "Dates use card creation time. The choice is saved locally."
+        )
+        self.library_sort.setToolTip(
+            "Sort the library. Date order uses creation time, not the last edit."
+        )
+        for value, label in LIBRARY_SORT_OPTIONS:
+            self.library_sort.addItem(label, value.value)
+        saved_sort = normalize_library_sort(self.settings.value("library/sort"))
+        self.library_sort.setCurrentIndex(self.library_sort.findData(saved_sort.value))
+        self.library_sort.currentIndexChanged.connect(self._set_library_sort)
+        sort_label.setBuddy(self.library_sort)
+        search_row.addWidget(sort_label)
+        search_row.addWidget(self.library_sort)
+        library_layout.addLayout(search_row)
 
         self.undo_bar = QFrame()
         self.undo_bar.setObjectName("undoBar")
@@ -951,6 +974,7 @@ class Dashboard(QMainWindow):
         self._set_tab_sequence(
             [
                 self.search_cards,
+                self.library_sort,
                 self.trash_button,
                 self.preview_button,
                 self.filter_button,
@@ -2568,6 +2592,7 @@ class Dashboard(QMainWindow):
             self.filter_pinned.isChecked(),
             kind=self._library_kind_filter,
             tag=self._library_tag_filter,
+            sort=normalize_library_sort(self.library_sort.currentData()),
         ):
             game_label = card.game or "General"
             details = [game_label, "Image" if card.kind is CardKind.IMAGE else "Note"]
@@ -2607,7 +2632,9 @@ class Dashboard(QMainWindow):
         if current_item is None and selected_items:
             current_item = selected_items[0]
         if current_item is not None:
-            self.card_list.setCurrentItem(current_item)
+            self.card_list.setCurrentItem(
+                current_item, QItemSelectionModel.SelectionFlag.NoUpdate,
+            )
             for item in selected_items:
                 item.setSelected(True)
         elif self.card_list.count():
@@ -2635,6 +2662,12 @@ class Dashboard(QMainWindow):
         self._update_card_preview(self.card_list.currentItem())
         self._update_filter_button()
         self._update_trash_button()
+
+    def _set_library_sort(self, _index: int) -> None:
+        sort = normalize_library_sort(self.library_sort.currentData())
+        self.settings.setValue("library/sort", sort.value)
+        self.settings.sync()
+        self.refresh_cards()
 
     def _set_library_kind_filter(self, action: QAction) -> None:
         value = str(action.data() or "")
