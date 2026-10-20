@@ -45,6 +45,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Add reusable tags such as map, boss, code, build, or puzzle to saved cards
 - Search saved cards by title, note text, extracted screenshot text, tag, or game
 - Filter the library by tag, card type, pinned state, favorites, or current game
+- Sort the library by creation date or title and remember the chosen order
 - Select multiple library cards to pin, favorite, organize, retag, or delete them together
 - Export selected cards as a portable ZIP with original images, a readable index, and metadata
 - Preview images and notes directly from the library with quick card actions
@@ -201,6 +202,14 @@ checksum command, and the distinction between automated and clean-machine testin
     `build`. Open **Filters** to combine tag, type, pinned, favorite, and game filters.
     Use `Ctrl+Click`, `Shift+Click`, or `Ctrl+A` in the library to select multiple cards,
     then open **Bulk actions** to update them together.
+    Beside library search, use **Sort by** to choose **Default**, **Newest first**,
+    **Oldest first**, or **Title A–Z**. Default keeps pinned cards first, then favorites,
+    then the most recently changed cards. Date sorting uses the original creation time,
+    so moving a pin or editing a note does not change that order. Title sorting ignores
+    ASCII letter case; it is not locale-specific. Your choice is saved locally and
+    survives restarting. Sorting preserves the current card, multi-selection, and preview,
+    works with search and filters, and is not reset by **Clear filters**. It does not
+    change quick-finder ranking or pin cycling order.
 18. Select one or more library cards and choose **Export card…** or **Export selected…** to
     create a portable ZIP containing original-resolution images, a readable Markdown index,
     and structured metadata. Missing image files are reported without dropping their cards.
