@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Self
 
+from gaming_buddy.library_sort import LibrarySort, normalize_library_sort
 from gaming_buddy.models import Card, CardKind, utc_now
 from gaming_buddy.tags import normalize_tags
 from gaming_buddy.workspace_presets import (
@@ -189,7 +190,9 @@ class CardStore:
         *,
         kind: CardKind | None = None,
         tag: str | None = None,
+        sort: LibrarySort | str = LibrarySort.DEFAULT,
     ) -> list[Card]:
+        """List matching cards; sort affects presentation only, never stored data."""
         clauses: list[str] = ["deleted_at = ''"]
         parameters: list[object] = []
         if game is not None and game.strip():
@@ -223,10 +226,17 @@ class CardStore:
             parameters.append(tag.strip())
 
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        # SQL identifiers cannot be bound parameters. Only fixed clauses reach ORDER BY.
+        order_by = {
+            LibrarySort.DEFAULT: "pinned DESC, favorite DESC, updated_at DESC, id DESC",
+            LibrarySort.NEWEST: "created_at DESC, id DESC",
+            LibrarySort.OLDEST: "created_at ASC, id ASC",
+            LibrarySort.TITLE: "title COLLATE NOCASE ASC, id ASC",
+        }[normalize_library_sort(sort)]
         rows = self._connection.execute(
             f"""
             SELECT * FROM cards{where}
-            ORDER BY pinned DESC, favorite DESC, updated_at DESC, id DESC
+            ORDER BY {order_by}
             """,
             parameters,
         ).fetchall()
