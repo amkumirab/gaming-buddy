@@ -48,6 +48,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Sort the library by creation date or title and remember the chosen order
 - Select multiple library cards to pin, favorite, organize, retag, or delete them together
 - Export selected cards as a portable ZIP with original images, a readable index, and metadata
+- Preview and selectively import shared card packs offline without overwriting existing cards
 - Preview images and notes directly from the library with quick card actions
 - Find and show any saved card from a keyboard-first in-game search overlay
 - Cycle through one pinned card at a time with favorites first and restore the prior layout
@@ -213,6 +214,20 @@ checksum command, and the distinction between automated and clean-machine testin
 18. Select one or more library cards and choose **Export card…** or **Export selected…** to
     create a portable ZIP containing original-resolution images, a readable Markdown index,
     and structured metadata. Missing image files are reported without dropping their cards.
+    To receive a pack, choose **Import cards…** below the library search. Check the cards
+    you want, inspect the image or plain-text preview, and choose **Import selected**.
+    Missing-image cards are shown but cannot be selected. Keep each card's original game,
+    or enable **Use one game for selected cards**; an empty destination means General.
+    Notes keep their line breaks, tags, favorites, and creation dates. Original image bytes
+    are copied without recompression. Imported cards start unpinned; your current game,
+    search, sorting, filters, settings, and workspace layouts are not changed.
+    Exact duplicates in the live library or within the selected pack are skipped. Identity
+    uses card type, destination game, title, exact text, normalized tags, and image bytes;
+    favorites, dates, and pin positions do not make a separate card. Changed text, including
+    whitespace, is kept as a new card. Cancel before confirmation to leave the library
+    untouched. Reading and duplicate checks run in the background, and closing the app
+    cancels the reader before shutdown. Use **Restore backup…**, not this importer, for
+    full workspace backups.
 19. Right-click a saved card or pin to collapse, lock, edit, copy, or locate its original file. Use
     **Unlock all** in the panel or Tray when you want to rearrange the whole workspace.
 20. Move a card to **Recently deleted** and use **Undo** immediately if it was accidental.
@@ -262,6 +277,9 @@ gaming-buddy/
 │   ├── markdown_view.py # Safe shared Markdown note preview
 │   ├── bulk_card_dialog.py # Multi-card game and tag changes
 │   ├── card_export.py   # Portable selected-card ZIP exports
+│   ├── card_pack.py     # Bounded card-pack ZIP and image validation
+│   ├── card_pack_import.py # Duplicate planning and atomic card imports
+│   ├── card_pack_dialog.py # Offline preview, selection, and background reader
 │   ├── pin.py          # Movable overlay cards
 │   ├── focus_mode.py   # Temporary distraction-free presentation state
 │   ├── pin_cycle.py    # Single-pin cycling and visibility restoration
@@ -325,6 +343,14 @@ gaming-buddy/
 - Backups are written only to the location selected by the user and are never uploaded.
 - Card exports are written only to the selected location and omit local database IDs and source
   file paths. Their Markdown and JSON contents may include the selected notes and extracted text.
+- Shared card packs are local, unencrypted ZIP files. The importer never extracts archive paths,
+  opens links, or loads remote images. It accepts version 1 card exports, not workspace backups.
+  Limits are 128 MiB compressed, 256 MiB uncompressed, 4 MiB metadata, 1,000 cards,
+  64 MiB per image, 32 million pixels per image, and 64 million pixels across all images.
+  ZIP64, encrypted files, unsafe paths, unknown members, and corrupt images are rejected.
+  Validation detects unsupported or damaged content; it does not authenticate the sender.
+  On a save failure, new cards and tags are rolled back and only newly created image copies
+  are removed. Existing cards and images are never overwritten.
 - Backup ZIP files are not encrypted, so they should be stored in a trusted location.
 - Optional update checks contact only the project's GitHub Releases API. They can be disabled
   from the tray menu.

@@ -139,3 +139,121 @@ Do not change quick-finder ranking, pin cycling, data schema, dependencies, or v
 - Version metadata remains synchronized at 0.1.0. Standard wheel packaging passed;
   archive integrity and inclusion of the sorting module were checked explicitly.
 - No installer or clean-machine acceptance was added by these delivery checks.
+
+# Shared card packs (2026-10-23)
+
+## Accepted scope and contracts
+
+Import existing gaming-buddy-cards version 1 ZIP exports offline. Preview and select
+cards before writing anything. Keep original game names by default, or choose one
+destination game (blank means General). Preserve multiline text, tags, favorites,
+and original image bytes. Missing-image cards are visible but not importable.
+Skip exact live-card duplicates after applying the destination game; never overwrite
+existing cards, settings, profiles, or layouts. Imported cards start unpinned.
+
+The loader returns immutable in-memory card/image records, never extracted paths.
+Only cards.json, optional README.md, and referenced images are accepted. Limits:
+128 MiB ZIP, 256 MiB uncompressed, 4 MiB metadata, 1000 cards, 64 MiB per image,
+32 million pixels per image, and 64 million pixels across the pack. Reject unsafe
+paths, links, encryption, ambiguous names/JSON, unknown versions and corrupt images.
+These are defensive resource bounds, not a claim that a shared pack is authenticated.
+
+The writer takes validated records and selected indices. Card identity consists of
+kind, destination game, title, exact content, normalized tags, and original-image
+SHA-256. Favorites, creation dates and layout are not identity. Compare only active
+cards; never read existing image paths outside the owned capture folder. New copies
+use exclusive generated filenames. Batch database insertion is transactional; failure
+rolls back all new cards/tags and removes only this operation's newly written copies.
+
+## Ordered slices and verification
+
+1. Reader and tests: real exporter round-trip, malformed metadata, unsafe members,
+   duplicate names, byte/pixel limits, missing/corrupt images, immutable preview data.
+2. Writer and storage tests: selected subset, destination game, duplicate import,
+   unchanged edited notes, multi-card SQLite rollback, write failure cleanup.
+3. Qt dialog and dashboard tests: checklist, offline preview, missing-image handling,
+   game destination, cancel/error/success, shutdown re-entry guard, accessible controls.
+4. README and verification record: full suites serially on Python 3.11 and 3.12,
+   Ruff, synchronized version metadata, wheel build and native Qt visual review.
+
+Source files live in src/gaming_buddy; isolated pytest cases live in tests. Follow
+the existing typed dataclass, snake_case and Qt style conventions. Commands remain
+`.venv/Scripts/python.exe -X faulthandler -m pytest`, `python -m ruff check .`,
+`python scripts/validate_release.py`, and `python -m pip wheel --no-deps .`.
+No schema, dependency, updater, release, or version changes. No network content is
+loaded from a pack. Leave commits/push for the user's delivery request.
+
+## Reader and lifecycle decisions
+
+- Inspect the bounded raw central directory before constructing ZipFile, whose eager
+  member parsing would otherwise precede file-count validation. Reject ZIP64 because
+  current bounded exports do not need it and its alternate directory complicates limits.
+- Read and validate the archive on a cancellable Python thread. Retain an immutable
+  snapshot for preview; replacing the source archive cannot alter confirmed content.
+- Plan duplicate detection on a worker using a snapshot of existing cards. Never pass
+  the GUI-owned SQLite connection to the worker. Commit selected cards on the GUI thread.
+- A modal preview pauses global shortcuts; queued capture requests are also rejected.
+  Cancel and shutdown discard late results and wait for the real worker to finish.
+- New image copies are registered immediately after exclusive creation, before stat or
+  write. Failure cleanup checks file identity and never runs after a successful commit.
+
+## Source receipts
+
+- https://docs.python.org/3.12/library/zipfile.html#zipfile.ZipFile : ZIP member metadata,
+  CRC checking during reads, and archive paths must not be treated as trusted filenames.
+- https://doc.qt.io/qt-6/qimagereader.html : reader instances are reentrant; dimensions
+  can be checked before decoding through a private QBuffer owned by the worker.
+- https://docs.python.org/3.12/library/sqlite3.html#sqlite3.Connection : connection context
+  managers commit or roll back transactions; GUI-created connections stay on their thread.
+
+## Intended commit boundaries
+
+1. Bounded card-pack reader and malformed-input regression tests.
+2. Duplicate planning, atomic storage insertion, and failure-cleanup tests.
+3. Preview dialog, control-panel integration, keyboard and shutdown regression tests.
+4. User documentation and verification record.
+
+## Card-pack verification (2026-10-23)
+
+- Final serial native Windows runs: 396 tests passed on Python 3.12.10 (39.27s)
+  and Python 3.11.9 (37.47s), both process exit zero, with PySide6 6.12.0.
+  The original 308 tests remain enabled; 88 new cases cover reader, writer, and UI.
+- RED/GREEN checks reproduced missing preview/import interfaces, the ZIP64 directory
+  bypass, queued capture interference, missing bounded thumbnails, and thread-start
+  failure before implementing their fixes. Cancellation tests include Escape, the
+  close button, explicit cancel, and shutdown while reading or planning.
+- Independent design/backend review identified eager ZIP member parsing, ZIP64
+  alternate-directory handling, GUI-thread blocking, and early file-identity failure.
+  These paths now have explicit bounds, thread separation, and regression tests.
+  Final UI integration was checked through source review, automated lifecycle tests,
+  and native Qt rendering.
+- Duplicate re-import creates no extra cards/files; changed multiline content remains
+  distinct. Injected database, partial-write, close, and stat failures preserve existing
+  cards and remove only newly owned copies. Refresh failure after commit keeps saved
+  images. No SQLite connection is passed to the background reader/planner.
+- Large-image thumbnails are decoded and prepared in the background. Resizing a wide
+  preview fits the available width; imported files retain their original bytes.
+- Reviewed native Qt renderings at 620x720 (text), 430x680 (image), and 470x730
+  (Library). Isolated demonstration files and screenshots stay under ignored build/.
+- Ruff, synchronized release metadata (unchanged 0.1.0), and the standard isolated
+  wheel build passed. The final wheel's integrity, module inclusion, and source-byte
+  equality were checked. No dependencies, database schema, or release workflow changed.
+- This is local source/UI verification, not installed-app acceptance. PyInstaller,
+  installer upgrade/uninstall, clean-machine, in-game, high-DPI/multi-monitor, and
+  screen-reader acceptance were not run. No commit, push, tag, or release was created.
+
+## Card-pack delivery checks (2026-10-23)
+
+- Fetched origin/main before committing; the starting checkout matched the remote.
+- Verified independent snapshots exported from the staged index, so later interface
+  changes could not hide missing dependencies in earlier commits. The reader snapshot
+  passed 357 tests and the writer snapshot passed 375 tests on Python 3.12, exit zero.
+  Both snapshots passed Ruff.
+- The interface snapshot passed all 396 tests serially on Python 3.12 (39.57s) and
+  Python 3.11 (37.65s), with process exit zero. Ruff passed on the same snapshot.
+- Reviewed staged implementation/test groups, public English text, ignored build
+  artifacts, and the user guide. Release metadata remains synchronized at 0.1.0.
+  The existing wheel's integrity and packaged source equality were rechecked.
+- Delivery is organized as reader, transactional storage, interface, and documentation
+  commits. These are source changes, not an installer release; the untested installed-app
+  scenarios listed above remain outstanding. Remote CI is checked after pushing.

@@ -17,3 +17,14 @@
   keyboard interaction, empty states, and compact layout tests.
 - [x] Delivery checks: English README, full Python 3.11/3.12 suites, Ruff, metadata,
   wheel packaging, and scoped code review. Report any untested desktop scenarios.
+
+# Shared card packs
+
+- [x] Reader: strict bounded ZIP/JSON/image validation, immutable preview records,
+  existing exporter compatibility, missing-image reporting and malicious-input tests.
+- [x] Writer: atomic batch insertion, duplicate detection, destination game, original
+  byte preservation and injected failure/cleanup tests without existing-data changes.
+- [x] Interface: accessible offline preview and selection, library entry point,
+  cancellation/shutdown guards and dashboard integration tests.
+- [x] Verification: English README, full Python 3.11/3.12 suites, Ruff, metadata,
+  wheel packaging, native Qt visual QA and independent review of sensitive paths.
