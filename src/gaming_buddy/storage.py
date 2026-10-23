@@ -147,6 +147,14 @@ class CardStore:
         self._connection.commit()
 
     def add(self, card: Card) -> Card:
+        return self.add_many([card])[0]
+
+    def add_many(self, cards: Sequence[Card]) -> list[Card]:
+        """Commit a complete batch, including tags, or roll it all back."""
+        with self._connection:
+            return [self._insert_card(card) for card in cards]
+
+    def _insert_card(self, card: Card) -> Card:
         card.with_timestamps()
         cursor = self._connection.execute(
             """
@@ -178,7 +186,6 @@ class CardStore:
         card.id = int(cursor.lastrowid)
         card.tags = normalize_tags(card.tags)
         self._replace_tags(card.id, card.tags)
-        self._connection.commit()
         return card
 
     def list(
