@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QDockWidget,
     QFileDialog,
     QFrame,
@@ -75,6 +76,9 @@ from gaming_buddy.capture_workflow import (
 )
 from gaming_buddy.card_editor import CardEditor
 from gaming_buddy.card_export import CardExportError, create_card_export
+from gaming_buddy.card_pack import CardPackError
+from gaming_buddy.card_pack_dialog import CardPackDialog
+from gaming_buddy.card_pack_import import commit_card_import
 from gaming_buddy.card_preview import CardPreviewPanel
 from gaming_buddy.diagnostics import DiagnosticHistory, IssueKind, collect_diagnostics
 from gaming_buddy.focus_mode import FocusModeState, PinPresentation
@@ -168,6 +172,7 @@ class Dashboard(QMainWindow):
         self._quick_finder: QuickFinderDialog | None = None
         self._recognition_languages: list[RecognitionLanguage] | None = None
         self._text_recognition_dialog: TextRecognitionDialog | None = None
+        self._card_pack_dialog: CardPackDialog | None = None
         self._library_kind_filter: CardKind | None = None
         self._library_tag_filter = ""
         self.focus_mode = FocusModeState()
@@ -857,6 +862,19 @@ class Dashboard(QMainWindow):
         search_row.addWidget(sort_label)
         search_row.addWidget(self.library_sort)
         library_layout.addLayout(search_row)
+
+        import_row = QHBoxLayout()
+        self.import_cards_button = QPushButton("Import cards…")
+        self.import_cards_button.setObjectName("compact")
+        self._configure_button(
+            self.import_cards_button,
+            QStyle.StandardPixmap.SP_DialogOpenButton,
+            "Preview and import notes and screenshots from a shared card-pack ZIP",
+        )
+        self.import_cards_button.clicked.connect(self.import_card_pack)
+        import_row.addWidget(self.import_cards_button)
+        import_row.addStretch(1)
+        library_layout.addLayout(import_row)
 
         self.undo_bar = QFrame()
         self.undo_bar.setObjectName("undoBar")
@@ -1834,7 +1852,7 @@ class Dashboard(QMainWindow):
         return True
 
     def start_full_screen_capture(self, _checked: bool = False) -> None:
-        if self._quitting:
+        if self._quitting or self._card_pack_dialog is not None:
             return
         if self._capture_in_progress:
             self.statusBar().showMessage("A capture is already in progress", 2500)
@@ -1867,7 +1885,7 @@ class Dashboard(QMainWindow):
         self._save_capture(image, instant=True, game=game)
 
     def start_capture(self, _checked: bool = False) -> None:
-        if self._quitting:
+        if self._quitting or self._card_pack_dialog is not None:
             return
         if self._capture_in_progress:
             self.statusBar().showMessage("A capture is already in progress", 2500)
@@ -2925,6 +2943,70 @@ class Dashboard(QMainWindow):
     def _export_selected_cards(self, _checked: bool = False) -> None:
         self._export_cards(self._selected_cards())
 
+    def import_card_pack(self, _checked: bool = False) -> None:
+        if self._quitting:
+            return
+        if self._card_pack_dialog is not None:
+            self._card_pack_dialog.raise_()
+            self._card_pack_dialog.activateWindow()
+            return
+        if self._capture_in_progress:
+            self.statusBar().showMessage("Finish or cancel the capture before importing cards.", 4000)
+            return
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import card pack", "", "Gaming Buddy card pack (*.zip)",
+        )
+        if not filename or self._quitting:
+            return
+        try:
+            existing = self.store.list()
+        except sqlite3.Error:
+            QMessageBox.warning(self, "Import unavailable", "The card library could not be read.")
+            return
+        dialog = CardPackDialog(
+            Path(filename), existing, self.captures_dir,
+            sorted({card.game for card in existing if card.game}, key=str.casefold), self,
+        )
+        self._card_pack_dialog = dialog
+        self.shortcut_editing_started.emit()
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted or self._quitting or dialog.plan is None:
+                return
+            try:
+                result = commit_card_import(dialog.plan, self.store, self.captures_dir)
+            except CardPackError as error:
+                QMessageBox.warning(self, "Import failed", str(error))
+                return
+            # Persistence has succeeded. A refresh failure must never remove saved images.
+            try:
+                self.refresh_cards()
+            except (sqlite3.Error, OSError):
+                QMessageBox.warning(
+                    self, "Cards saved",
+                    "The cards were saved, but the library could not refresh. Reopen the panel.",
+                )
+            self.statusBar().showMessage(
+                f"Imported {result.imported} card(s) · {result.duplicates} duplicate(s) skipped · "
+                f"{dialog.missing_image_count} unavailable image card(s). "
+                "Current library filters still apply.", 8000,
+            )
+        finally:
+            if dialog.shutdown_ready:
+                self._card_pack_dialog = None
+                dialog.deleteLater()
+            else:
+                # An application-level event-loop exit may bypass normal dialog closure.
+                dialog.begin_shutdown()
+                dialog.work_finished.connect(self._release_card_pack_dialog)
+            if not self._quitting:
+                self.shortcut_editing_cancelled.emit()
+
+    def _release_card_pack_dialog(self) -> None:
+        dialog = self._card_pack_dialog
+        if dialog is not None and dialog.shutdown_ready:
+            self._card_pack_dialog = None
+            dialog.deleteLater()
+
     def _export_cards(self, cards: list[Card]) -> None:
         if not cards:
             return
@@ -3648,6 +3730,8 @@ class Dashboard(QMainWindow):
         self.update_controller.begin_shutdown()
         if self._text_recognition_dialog is not None:
             self._text_recognition_dialog.begin_shutdown()
+        if self._card_pack_dialog is not None:
+            self._card_pack_dialog.begin_shutdown()
         self._update_check_manual = False
         self._close_update_progress()
         if not self._background_tasks_finished():
@@ -3681,6 +3765,7 @@ class Dashboard(QMainWindow):
         return (
             self.update_controller.shutdown_ready
             and (dialog is None or dialog.shutdown_ready)
+            and (self._card_pack_dialog is None or self._card_pack_dialog.shutdown_ready)
             and (self.shortcut_shutdown_ready is None or self.shortcut_shutdown_ready())
         )
 
