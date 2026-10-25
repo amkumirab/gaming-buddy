@@ -479,6 +479,16 @@ class CardStore:
         self._connection.commit()
         return cursor.rowcount
 
+    def update_note_content(self, card_id: int, *, expected: str, content: str) -> bool:
+        """Save one note change only while its original content is still current."""
+        with self._connection:
+            cursor = self._connection.execute(
+                "UPDATE cards SET content = ?, updated_at = ? "
+                "WHERE id = ? AND kind = 'note' AND deleted_at = '' AND content = ?",
+                (content, utc_now(), card_id, expected),
+            )
+        return cursor.rowcount > 0
+
     def update_details(
         self,
         card_id: int,
