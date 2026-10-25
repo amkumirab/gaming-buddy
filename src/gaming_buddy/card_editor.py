@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gaming_buddy.checklist_editor import insert_checklist
 from gaming_buddy.markdown_view import MarkdownPreview
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.tags import MAX_TAG_LENGTH, MAX_TAGS_PER_CARD, normalize_tags
@@ -142,6 +143,10 @@ class CardEditor(QDialog):
             "Quote",
             "Toggle a quote for the selected lines",
             lambda: self._toggle_line_prefix("> "),
+        )
+        self._add_markdown_action(
+            toolbar, "checklist", "Checklist", "Turn selected lines into checklist items",
+            lambda: insert_checklist(self.content_input),
         )
         toolbar.addSeparator()
         self._add_markdown_action(
