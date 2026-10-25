@@ -257,3 +257,93 @@ loaded from a pack. Leave commits/push for the user's delivery request.
 - Delivery is organized as reader, transactional storage, interface, and documentation
   commits. These are source changes, not an installer release; the untested installed-app
   scenarios listed above remain outstanding. Remote CI is checked after pushing.
+
+# Interactive note checklists (2026-10-25)
+
+## Approved objective and behavior
+
+Add a Checklist action to the note toolbar, interactive task markers on note pins,
+and a saved completion count. Existing notes remain unchanged until explicitly edited
+or toggled. Use standard Markdown task syntax, not a new card kind or schema.
+Each toggle changes exactly one source character inside `[ ]` / `[x]`; preserve all
+other whitespace, Unicode, line endings, headings, code, tags, and layout metadata.
+Code examples and escaped task-like text must remain read-only. Never regenerate
+stored Markdown from rendered rich text.
+
+## Implementation slices
+
+1. Checklist source mapping and storage compare-and-swap: use Qt's existing Markdown
+   parser for actual task recognition, map visible markers to original source offsets,
+   and guard against stale content, deleted/image cards, and database write failures.
+2. Editor action: convert selected lines to tasks in one undo step, preserving existing
+   task states; add tasks from the quick-note field using the same helper.
+3. Pin interaction: click actual check markers or use Space on a task line, save before
+   displaying the new state, and update the completion count and library preview.
+   Position locking does not disable tasks; click-through/focus mode still blocks input.
+4. Verification and English documentation: full Python 3.11/3.12 suites serially with
+   exit zero, Ruff, version metadata, wheel build, and native Qt visual review.
+
+## Design, commands, and boundaries
+
+Keep source mapping and the focused interactive view in dedicated modules under
+src/gaming_buddy; regression tests belong in tests/. Reuse MarkdownPreview's blocked
+remote images/links and native Qt rendering instead of adding an HTML/browser stack.
+Use existing snake_case methods and typed records, e.g. `set_task(source, offset, checked)`.
+Run `.venv/Scripts/python.exe -X faulthandler -m pytest`,
+`build/venv311/Scripts/python.exe -m ruff check --no-cache .`,
+`python scripts/validate_release.py`, and `python -m pip wheel --no-deps .`.
+No dependencies, schema/version, CI, installer, or release changes. Do not commit/push
+until the user requests delivery. Preserve all existing tests and user data.
+
+## Source receipts
+
+- https://doc.qt.io/qt-6/qtextblockformat.html#MarkerType-enum : native task markers.
+- https://doc.qt.io/qt-6/qabstracttextdocumentlayout.html#blockWithMarkerAt : hit-test
+  the actual marker rather than toggling when ordinary note text is selected.
+- https://doc.qt.io/qt-6/qtextedit.html#cursorForPosition : document/view coordinates
+  and keyboard cursor positions must account for scrolling and UTF-16 positions.
+
+## Checklist verification (2026-10-25)
+
+- RED/GREEN: new model, editor, view, and pin tests first failed on missing behavior.
+  Further regressions reproduced a changed code-example space and checklist keyboard
+  changes during click-through; both were fixed without suppressing tests.
+- All 431 tests passed serially on Python 3.12.10 (41.57s) and Python 3.11.9 (47.46s),
+  with PySide6 6.12.0, native Windows Qt, and process exit zero on both runtimes.
+  The original 396 tests remain enabled; 35 new cases cover the checklist feature.
+- Covered CRLF and blank-line preservation, repeated Unicode labels, ordered/nested
+  tasks, fenced/indented code and quoted examples, source offsets, one-step editor undo,
+  existing checked states, pointer/Space input, copy selection, progress, reopen,
+  stale/deleted/image-card protection, database rollback, post-commit refresh failure,
+  quick-note drafts, click-through, and shutdown admission.
+  The shutdown assertion restores current content first so it cannot pass solely
+  because the stale-content guard rejected the same write.
+- Source review: save-before-display; a conditional SQL content-only update preserves
+  tags, creation dates, and layout. Only a task marker character is stored differently.
+  Temporary parser labels are never saved. Existing image/link blocking is inherited.
+  Shared MarkdownPreview remains read-only outside note pins.
+- Native Qt examples were rendered at 360x340 for the pin, 540x620 for the editor,
+  and 470x730 for the compact panel with its preview dock hidden. Checklist controls
+  and completion text were inspected. Examples and images stay under ignored build/.
+- Ruff, release metadata synchronization (unchanged 0.1.0), and the isolated wheel build
+  passed. Wheel archive integrity and packaged source equality were verified for all
+  seven affected/new runtime modules. Dependencies, schema, and CI are unchanged.
+- Installer, clean-machine, in-game overlay, high-DPI/multi-monitor, older Qt versions,
+  and screen-reader acceptance were not exercised. No commit, push, tag, or release
+  was created for this feature; delivery awaits the user's request.
+
+## Checklist delivery checks (2026-10-25)
+
+- The user authorized three logically focused commits and publication to the existing
+  public main branch. The starting checkout matched origin/main after fetching.
+- Verified snapshots of the staged index, independently of later working-tree changes.
+  The source/storage slice passed 414 tests on Python 3.12 (37.34s); the editor slice
+  passed 420 tests (23.58s). Both snapshots passed Ruff with process exit zero.
+- The final integration snapshot passed all 431 tests serially on Python 3.12 (44.62s)
+  and Python 3.11 (47.87s), with process exit zero. Ruff passed on that snapshot.
+- Reviewed the scoped staged diffs and English public text. Release metadata remains
+  synchronized at 0.1.0; wheel integrity and source equality were rechecked. Ignored
+  demonstration files, screenshots, virtual environments, and builds are not staged.
+- Commit boundaries are source/storage, editor formatting, and pin/quick-note integration
+  with user documentation. These checks precede push and remote CI verification; they
+  do not add installer, clean-machine, or in-game acceptance evidence.

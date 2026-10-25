@@ -28,3 +28,14 @@
   cancellation/shutdown guards and dashboard integration tests.
 - [x] Verification: English README, full Python 3.11/3.12 suites, Ruff, metadata,
   wheel packaging, native Qt visual QA and independent review of sensitive paths.
+
+# Interactive note checklists
+
+- [x] Source mapping and atomic content updates: exact one-character changes, parser
+  exclusions, stale/deleted/image protection, rollback and persistence tests.
+- [x] Editor: Checklist toolbar action and quick-note helper; selection, Unicode,
+  existing task states, ordinary notes and one-step undo regression tests.
+- [x] Pins: mouse/keyboard interaction, progress, save failure, library synchronization,
+  click-through and shutdown guards with integration tests.
+- [x] Verification: English README, full serial Python 3.11/3.12 suites with exit zero,
+  Ruff, metadata, wheel packaging, native Qt visual review and scoped source review.

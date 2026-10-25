@@ -80,6 +80,7 @@ from gaming_buddy.card_pack import CardPackError
 from gaming_buddy.card_pack_dialog import CardPackDialog
 from gaming_buddy.card_pack_import import commit_card_import
 from gaming_buddy.card_preview import CardPreviewPanel
+from gaming_buddy.checklist_editor import insert_checklist
 from gaming_buddy.diagnostics import DiagnosticHistory, IssueKind, collect_diagnostics
 from gaming_buddy.focus_mode import FocusModeState, PinPresentation
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, complete_shortcuts, validate_shortcuts
@@ -410,6 +411,15 @@ class Dashboard(QMainWindow):
         self.note_input.textChanged.connect(self._schedule_note_draft_save)
         note_layout.addWidget(note_label)
         note_layout.addWidget(self.note_input)
+
+        self.note_checklist_button = QPushButton("Checklist")
+        self.note_checklist_button.setObjectName("compact")
+        self._configure_button(
+            self.note_checklist_button, QStyle.StandardPixmap.SP_DialogApplyButton,
+            "Turn the current line or selected note lines into checklist items",
+        )
+        self.note_checklist_button.clicked.connect(lambda: insert_checklist(self.note_input))
+        note_layout.addWidget(self.note_checklist_button, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.note_draft_bar = QFrame()
         self.note_draft_bar.setObjectName("setupCard")
@@ -2252,6 +2262,7 @@ class Dashboard(QMainWindow):
             self._extract_image_text,
             self._copy_extracted_text,
             self._open_card_location,
+            self._save_pin_note,
         )
         pin.set_click_through(self.click_through.isChecked())
         self.pins[card.id] = pin
@@ -3148,6 +3159,24 @@ class Dashboard(QMainWindow):
             self._export_cards([card])
         elif action is delete_action:
             self._delete_card(card)
+
+    def _save_pin_note(self, card: Card, expected: str, content: str) -> bool:
+        if self._quitting or card.id is None:
+            return False
+        try:
+            saved = self.store.update_note_content(card.id, expected=expected, content=content)
+        except sqlite3.Error:
+            self.statusBar().showMessage("Checklist could not be saved. Existing note kept.", 4000)
+            return False
+        if not saved:
+            self.statusBar().showMessage("The note changed or was deleted. Reopen it before retrying.", 4000)
+            return False
+        card.content = content
+        try:
+            self.refresh_cards()
+        except (sqlite3.Error, OSError):
+            self.statusBar().showMessage("Checklist saved. Reopen the library to refresh its preview.", 4000)
+        return True
 
     def _edit_card(self, card: Card) -> None:
         if card.id is None:

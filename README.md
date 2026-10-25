@@ -32,6 +32,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Create, save, and pin quick text notes
 - Format notes with Markdown and preview headings, lists, emphasis, quotes, and code
 - Apply common Markdown formatting from the note toolbar or keyboard shortcuts
+- Create checklists and tick tasks directly on pinned notes with saved completion progress
 - Autosave unfinished notes locally and restore them after an interrupted session
 - Move and resize every pinned card
 - Snap pins to nearby screen edges and lock their position and size
@@ -211,6 +212,17 @@ checksum command, and the distinction between automated and clean-machine testin
     survives restarting. Sorting preserves the current card, multi-selection, and preview,
     works with search and filters, and is not reset by **Clear filters**. It does not
     change quick-finder ranking or pin cycling order.
+    For task notes, select lines and choose **Checklist** in the note editor or quick-note
+    field. Existing checked items stay checked, and insertion can be undone in one step.
+    Write tasks as `- [ ] Bring a potion` and completed tasks as `- [x] Check the map`.
+    On a pinned note, click the checkbox to toggle it, or place the text cursor on a task
+    line and press **Space**. The counter shows how many items are complete. Clicking
+    ordinary text or selecting text to copy does not toggle tasks. Changes are saved
+    immediately and survive restarting, exporting, and importing the note.
+    Position locks still allow ticking tasks; click-through and focus mode disable task
+    changes. Fenced/indented code examples and quoted task examples are not interactive.
+    A failed save keeps the previous state and displays an inline message. If a note was
+    changed or deleted elsewhere, reopen or edit it before retrying; it is not overwritten.
 18. Select one or more library cards and choose **Export card…** or **Export selected…** to
     create a portable ZIP containing original-resolution images, a readable Markdown index,
     and structured metadata. Missing image files are reported without dropping their cards.

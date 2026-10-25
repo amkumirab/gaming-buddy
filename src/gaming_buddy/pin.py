@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gaming_buddy.checklist_view import ChecklistView
 from gaming_buddy.markdown_view import MarkdownPreview
 from gaming_buddy.models import Card, CardKind
 
@@ -249,6 +250,7 @@ class PinWidget(QWidget):
         on_extract_text: Callable[[Card], None],
         on_copy_text: Callable[[Card], None],
         on_open_location: Callable[[Card], None],
+        on_note_changed: Callable[[Card, str, str], bool] | None = None,
     ) -> None:
         super().__init__()
         self.card = card
@@ -264,6 +266,8 @@ class PinWidget(QWidget):
         self._on_extract_text = on_extract_text
         self._on_copy_text = on_copy_text
         self._on_open_location = on_open_location
+        self._on_note_changed = on_note_changed
+        self.note_view: ChecklistView | None = None
         self._drag_origin: QPoint | None = None
         self._drag_moved = False
         self._viewer: FullImageViewer | None = None
@@ -370,13 +374,25 @@ class PinWidget(QWidget):
             image.open_requested.connect(self._open_original)
             body_layout.addWidget(image, 1)
         else:
-            content = MarkdownPreview()
+            content = (
+                ChecklistView(self._save_note_task if self._on_note_changed else None)
+                if self.card.kind is CardKind.NOTE else MarkdownPreview()
+            )
             content.setObjectName("pinContent")
             if self.card.kind is CardKind.NOTE:
+                self.note_view = content
+                self.checklist_progress = QLabel()
+                self.checklist_progress.setObjectName("pinGame")
+                self.checklist_progress.setWordWrap(True)
+                self.checklist_progress.setAccessibleName("Checklist progress")
+                content.progress_changed.connect(self._show_checklist_progress)
+                content.save_failed.connect(self._show_checklist_error)
                 content.set_markdown(self.card.content)
             else:
                 content.setPlainText(self.card.content)
             body_layout.addWidget(content, 1)
+            if self.note_view is not None:
+                body_layout.addWidget(self.checklist_progress)
 
         grip_row = QHBoxLayout()
         grip_row.addStretch(1)
@@ -386,7 +402,23 @@ class PinWidget(QWidget):
         body_layout.addLayout(grip_row)
         layout.addWidget(self._body, 1)
 
+    def _save_note_task(self, expected: str, content: str) -> bool:
+        if self._on_note_changed is None or not self._on_note_changed(self.card, expected, content):
+            return False
+        self.card.content = content
+        return True
+
+    def _show_checklist_progress(self, done: int, total: int) -> None:
+        self.checklist_progress.setText(f"{done} of {total} completed")
+        self.checklist_progress.setVisible(total > 0)
+
+    def _show_checklist_error(self) -> None:
+        self.checklist_progress.setText("Could not save checklist. Reopen or edit the note and retry.")
+        self.checklist_progress.show()
+
     def set_click_through(self, enabled: bool) -> None:
+        if self.note_view is not None:
+            self.note_view.set_interactive(not enabled)
         was_visible = self.isVisible()
         self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, enabled)
         if was_visible:
