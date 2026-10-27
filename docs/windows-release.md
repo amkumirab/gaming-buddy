@@ -8,6 +8,38 @@ Version `0.1.0` has no official release yet. Its synchronized version sources ar
 clean Windows machine without Python. A successful Actions build is a test artifact,
 not evidence that these desktop checks have passed.
 
+## Try a development installer
+
+The [LICENSE](../LICENSE) permits personal, non-commercial use and evaluation without
+a separate written request, including local source builds, test execution, and running
+an unmodified installer. It does not permit redistributing a test build or publishing a
+modified version. Report bugs through the
+[issue tracker](https://github.com/amkumirab/gaming-buddy/issues), without private notes
+or screenshots.
+
+1. Open the [Windows build workflow](https://github.com/amkumirab/gaming-buddy/actions/workflows/windows-release.yml)
+   and select a successful **manual** run. Check its commit against the change you want
+   to try. Maintainers must build the intended current commit, not reuse an old artifact
+   with the same version number. Older installers retain their embedded license text;
+   a documentation change does not replace those installer bytes.
+2. Sign in to GitHub and download `gaming-buddy-windows-<run-id>` from **Artifacts**.
+   If the artifact has expired, request a fresh manual build; an empty Releases page is
+   not a download failure. Extract the archive to a folder.
+3. Check that `Gaming-Buddy-Setup-0.1.0-x64.exe` and
+   `Gaming-Buddy-Setup-0.1.0-x64.exe.sha256` are both present. Run the checksum command
+   under **Official publication** in that folder. Stop if it fails. The checksum detects
+   a mismatched download; it is not a code-signing certificate or a safety guarantee.
+4. Read the installer's license and install only if you accept its terms. Use a disposable
+   test profile or machine for lifecycle testing, especially uninstall and data removal.
+   Follow **Clean-machine desktop acceptance** to record what you actually tested.
+5. Attach a completed copy of the [acceptance report](windows-acceptance-report.md) when
+   reporting test results. A development-machine test is useful, but must not be recorded
+   as a clean-machine pass. Sharing the report does not require sharing the installer.
+
+The installer bundles its runtime; Python is required for source builds only. Test
+artifacts remain experimental until acceptance passes. The release gate below applies
+even when automated tests succeed.
+
 ## Build and automated verification
 
 1. Confirm `main` is current and the working tree is clean.
@@ -34,6 +66,9 @@ Use a disposable Windows 10 version 1809 or newer / Windows 11 x64 VM or test ma
 with no installed Python, developer tools, or previous Gaming Buddy installation. Do not
 use another person's computer or saved workspace. Record the Windows version, build
 commit, installer SHA-256, and result of each check.
+Copy the [acceptance report template](windows-acceptance-report.md) for each exact
+installer. Leave unperformed checks as **Not tested**, record failures, and link the
+completed report before approving public release.
 
 1. Verify the downloaded installer against its checksum file before running it.
 2. Install as a standard user. Check Start menu and optional desktop shortcuts, the icon,
@@ -45,7 +80,8 @@ commit, installer SHA-256, and result of each check.
 5. Capture a visible test region. Inspect the PNG at 100%, save it, pin it, restart, and
    reopen the saved original. Do not capture private desktop content.
 6. Save a multiline Markdown note, edit it, restart, and verify its complete text and
-   preview. Verify pinned-note restoration.
+   preview. Verify pinned-note restoration. Toggle a task in a pinned checklist,
+   restart, and verify that its checked state and progress are retained.
 7. Reinstall the same build and verify that cards, screenshots, layouts, shortcuts, and
    settings survive. When a prior official version exists, also test a genuine
    older-to-newer upgrade. Same-version reinstallation is not a version upgrade.

@@ -117,6 +117,11 @@ alternative is assigned if `Ctrl+Shift+D` is already used by another action.
 
 ## Run from source
 
+Personal, non-commercial use and evaluation are permitted without a separate written
+request, including downloading the source, installing dependencies, running tests, and
+building a local unmodified copy. Redistribution, source changes, and commercial use
+require written permission. See [LICENSE](LICENSE) for the full terms.
+
 Windows 10 version 1809 or newer and Python 3.11 or newer are required.
 
 ```powershell
@@ -142,6 +147,10 @@ page. Use **Run from source** above until the first official release is availabl
 Successful manual [Windows build runs](https://github.com/amkumirab/gaming-buddy/actions/workflows/windows-release.yml)
 provide test artifacts named `gaming-buddy-windows-<run-id>`; downloading Actions artifacts
 requires a GitHub account. These are test builds, not official releases.
+For the download, checksum, and feedback steps, see
+[Try a development installer](docs/windows-release.md#try-a-development-installer).
+Older artifacts do not include later changes to the program or its license; check the
+run's commit and the license shown by that installer before testing.
 
 The planned release assets are `Gaming-Buddy-Setup-0.1.0-x64.exe` and
 `Gaming-Buddy-Setup-0.1.0-x64.exe.sha256`. The installer bundles its runtime and does not
@@ -455,7 +464,9 @@ Qt thread cleanup follows the completion semantics in the
 
 Copyright © 2026 **Amir Ali Mirab Zadeh Ardekani**. All rights reserved.
 
-This is proprietary software. The source is available for viewing, but copying,
-modification, redistribution, commercial use, or creation of derivative works is not
-permitted without prior written authorization. See [LICENSE](LICENSE) for the complete
-terms.
+This is proprietary software with permission for personal, non-commercial use and
+evaluation. You may install and run it, or download the source and build an unmodified
+local copy, without requesting separate written permission. Ownership is retained by
+the author. Modification, redistribution, commercial use, and derivative works require
+prior written authorization, subject to the third-party and statutory exceptions in
+[LICENSE](LICENSE). Your notes and screenshots remain your own content.

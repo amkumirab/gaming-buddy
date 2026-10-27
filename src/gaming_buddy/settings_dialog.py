@@ -308,8 +308,9 @@ class SettingsDialog(QDialog):
         path_row.addWidget(open_folder)
         ownership = QLabel(
             "Copyright © Amir Ali Mirab Zadeh Ardekani. All rights reserved.\n"
-            "Proprietary software — copying, redistribution, and commercial use are not "
-            "permitted without written authorization."
+            "Proprietary software. Personal, non-commercial use and evaluation are permitted, "
+            "including unmodified local source builds. Modification, redistribution, and "
+            "commercial use require written permission, subject to the full LICENSE terms."
         )
         ownership.setWordWrap(True)
         layout.addWidget(name)
