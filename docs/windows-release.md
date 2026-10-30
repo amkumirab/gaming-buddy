@@ -46,7 +46,11 @@ even when automated tests succeed.
 2. Run `windows-release.yml` manually on `main` and record its commit SHA and run URL.
 3. Require version validation, tests, Ruff, PyInstaller, Inno Setup, and SHA-256 generation
    to pass. Do not reuse an older run merely because its version number is identical.
-4. Require the installer lifecycle step to pass. It verifies the checksum, per-user
+4. Require the separate installer_test job to pass on a fresh hosted Windows runner.
+   It downloads the exact installer artifact from the build job. Source tests must not
+   run in this job: Qt tests can create registry settings, which would correctly trigger
+   the lifecycle script's existing-state refusal guard. Never delete a user's state to
+   bypass that guard. The job verifies the checksum, per-user
    installation and uninstall registration, executable version, Start menu and desktop
    shortcut targets, application startup with the bundled Python DLL, removal of stale
    runtime files during reinstallation, and preservation of workspace files and settings
@@ -59,6 +63,46 @@ It must not be run against a personal workspace. The runner contains Python, alt
 the launched app's PATH is restricted to Windows directories and external Python/Qt
 environment overrides are removed. Retention checks use the app-created database and
 synthetic note/image sentinels. They do not exercise note editing or region selection.
+
+## Prepare a candidate report without Python
+
+Download the source archive for the same commit, or use a checkout of that commit with
+the reporting tools. Keep its `scripts` and `docs` folders together. This command works
+with Windows PowerShell 5.1 and does not need Python, Git, administrator access, or an
+installed Gaming Buddy. Run it from the source folder after extracting the installer
+and checksum artifact:
+
+```powershell
+./scripts/prepare_windows_acceptance.ps1 `
+  -InstallerPath 'C:\Downloads\Gaming-Buddy-Setup-0.1.0-x64.exe' `
+  -BuildCommit '<full 40-character commit SHA from Actions>' `
+  -BuildRunUrl 'https://github.com/amkumirab/gaming-buddy/actions/runs/<run-id>' `
+  -ReportDirectory './build/acceptance/session-01'
+```
+
+Replace all placeholders with the actual successful run identity. Cross-check the run's
+source SHA and artifact before proceeding. Build identity is supplied by the caller;
+the script verifies the local installer against its sidecar, not its GitHub provenance
+or publisher signature. The example download path is illustrative.
+
+The command refuses a missing/mismatched checksum, unexpected filename, invalid build
+identity, or existing output directory. It creates:
+
+- `candidate.json`: installer filename, version, size, SHA-256, supplied run/commit,
+  report preparation time, and basic OS/PowerShell environment details.
+- `acceptance.md`: the desktop acceptance checklist with that candidate identity.
+- `game-compatibility.md`: the per-game compatibility and performance recording guide.
+
+It does not install, launch, uninstall, upload, modify application data, or determine
+whether the computer is clean. Local checksum matching is recorded; all desktop,
+Python-absence, performance, and publication decisions remain untested/pending. Existing
+reports are never replaced: use a new directory for each tester/candidate session.
+Windows policies may prevent downloaded scripts from running; do not weaken policy as
+part of testing. Review the source and use the manual checklist instead if necessary.
+
+Follow [Game compatibility and performance](game-compatibility-report.md) for repeated
+off/on comparisons in the same scene. Report actual measurements and their method;
+do not infer FPS, frame-time, or game compatibility from the unit-test count.
 
 ## Clean-machine desktop acceptance
 

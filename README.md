@@ -170,6 +170,11 @@ a `.sha256` file so the installer can be checked before it is run.
 
 See [Windows release verification](docs/windows-release.md) for the required checks,
 checksum command, and the distinction between automated and clean-machine testing.
+Testers can [prepare a candidate report without Python](docs/windows-release.md#prepare-a-candidate-report-without-python)
+to verify their download and record installation, game compatibility, and performance
+against the exact installer checksum. Report preparation does not approve a release.
+The [2026-10-30 candidate record](docs/release-candidates/2026-10-30.md) identifies a
+fresh tested Actions installer and lists the desktop checks that remain pending.
 
 ## How to use
 
@@ -431,8 +436,10 @@ Windows release workflow and creates a draft with the installer and its SHA-256 
 the workflow manually builds a downloadable test artifact without publishing a release.
 Both paths test installation, bundled-runtime startup, shortcut targets, same-version
 reinstallation, and silent-uninstall data retention on a disposable Windows runner.
-The separate installer-test artifact contains the checks and installation logs. The
-runner has Python installed, so this is not a substitute for the clean-machine desktop
+The installer lifecycle test runs in a separate fresh Windows job so source-test registry
+settings cannot contaminate installation checks. The separate installer-test artifact
+contains the checks and installation logs. The runner has Python installed, so this is
+not a substitute for the clean-machine desktop
 checks required before pushing a release tag.
 Tagged builds create a draft release. Publish the draft only after desktop acceptance
 of those exact installer bytes, then link README to the downloadable official release.

@@ -347,3 +347,63 @@ until the user requests delivery. Preserve all existing tests and user data.
 - Commit boundaries are source/storage, editor formatting, and pin/quick-note integration
   with user documentation. These checks precede push and remote CI verification; they
   do not add installer, clean-machine, or in-game acceptance evidence.
+
+## Release candidate handoff (2026-10-30)
+
+Prepare the first roadmap increment: a fresh manual Actions build from current main,
+plus a Python-free way to verify an installer and start an evidence report. Existing
+installer lifecycle tests and desktop acceptance criteria remain authoritative.
+
+The fresh run 41031956975 reproduced a release-pipeline failure after a successful
+application/installer build: unit tests left HKCU/Software/GamingBuddy behind, so the
+lifecycle script correctly refused to overwrite state on the shared runner. Move the
+installer lifecycle test to its own fresh hosted-runner job, downloading the exact
+build artifact. Publication must depend on both jobs; retain all refusal guards.
+
+Scope and acceptance:
+- Reuse the manual windows-release workflow; record its exact source SHA and run URL.
+  Download the fresh installer and checksum only after the entire build succeeds.
+- Add a PowerShell report-preparation command. Validate the filename, checksum, full
+  source SHA and repository run URL before creating any output. Refuse to overwrite
+  existing reports. Record environment details without claiming Python is absent.
+- Populate the existing acceptance template with candidate identity, leaving all
+  interactive checks pending. Add a game compatibility/performance recording template
+  with reproducible on/off comparisons, no invented FPS or memory results.
+- Verify real subprocess behavior on valid, corrupt, missing, and mismatched inputs,
+  repeat invocation, paths with spaces, and reports for multiple semantic versions.
+- Review English docs, run full suites serially on Python 3.11/3.12, Ruff, and release
+  metadata checks. Do not change the app, version, schema, or tag-only publication gate.
+
+The script reads local files only, never starts an installer, changes Windows settings,
+collects private game data, or uploads a report. Build URL and commit are caller-supplied
+identity, to be cross-checked against Actions; checksums do not authenticate a publisher.
+Clean-machine installation, real-game compatibility, and in-game FPS measurements
+require an available test environment and must remain pending until actually performed.
+Use focused commits on a short-lived working branch to test the corrected workflow
+remotely. Do not update main, create a tag, or publish a release during this increment.
+
+Verification so far:
+- A staged isolation-only snapshot passed 433 tests on Python 3.12 (48.95s), exit zero.
+- Report preparation first failed on missing functionality. Real Windows PowerShell 5.1
+  subprocess tests then passed 11 cases for valid versions, corrupt/missing files,
+  mismatched names, invalid run/commit identity, preservation of prior reports, and
+  paths containing spaces. Test children reconstruct their own PowerShell module paths
+  to avoid importing PS7 assemblies inherited through the Python parent process.
+- Full local suites passed serially: 444 tests on Python 3.12 (49.54s) and Python 3.11
+  (51.88s), both process exit zero. Ruff, release metadata validation, PowerShell syntax,
+  and relative documentation file-link checks passed. No runtime app code changed.
+- Source receipts: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash?view=powershell-5.1
+  and https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/convertto-json?view=powershell-5.1
+- Corrected workflow run 41032835752 succeeded on c81b55d38fc82ae973ebd98015fecbf74a5ef7f7:
+  433 source tests, Ruff, version validation, PyInstaller and Inno Setup; fresh-runner
+  installation/shortcuts, bundled-runtime startup, same-version reinstall cleanup and
+  silent-uninstall retention all passed. Tag publication was correctly skipped.
+- Downloaded installer, sidecar and automated result.json agree on SHA-256
+  1eda01af9fbaa1541cef95f86ae95bb422f962c58a237381c7aec8b6838c5cc4 (36031313 bytes).
+  Generated reports against the real candidate with PowerShell 7 and with Windows
+  PowerShell 5.1 under a Windows-only PATH; both preserved the pending acceptance state.
+  This is not evidence of a Python-free machine. Actual candidate evidence is recorded
+  in docs/release-candidates/2026-10-30.md; local downloads/reports stay under ignored build/.
+- Manual clean-machine, real-game, interactive uninstall and performance checks remain
+  open external acceptance work. No source-test success or generated report substitutes
+  for those checks. No tag or official release was created.
