@@ -55,6 +55,7 @@ def _run_dashboard(
     dashboard.shortcut_status = lambda: hotkeys.running
     dashboard.shortcut_shutdown_ready = lambda: hotkeys.shutdown_ready
     hotkeys.toggle_panel.connect(dashboard.toggle_panel)
+    hotkeys.toggle_quick_panel.connect(dashboard.toggle_quick_panel)
     hotkeys.quick_finder.connect(dashboard.show_quick_finder)
     hotkeys.capture_area.connect(dashboard.start_capture)
     hotkeys.capture_screen.connect(dashboard.start_full_screen_capture)

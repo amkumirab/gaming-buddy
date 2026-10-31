@@ -407,3 +407,46 @@ Verification so far:
 - Manual clean-machine, real-game, interactive uninstall and performance checks remain
   open external acceptance work. No source-test success or generated report substitutes
   for those checks. No tag or official release was created.
+
+## Compact quick panel (2026-10-31)
+
+The user approved the next roadmap feature. See docs/specs/compact-quick-panel.md for
+the behavior, design contract, implementation slices and verification commands.
+Preserve the open external installer/game acceptance item above; it is separate from
+this authorized source/UI change and is not marked complete by these tests.
+
+Implement shortcut migration/routing, a focused QuickPanel view and a separate
+coordinator. Keep database writes and capture/finder logic in their existing owners.
+Dashboard gains only lifecycle integration and navigation, not a second notebook or
+capture implementation. Test failures and cancellation before broad verification.
+Keep full-panel startup/default shortcuts unchanged. No dependencies, schema/version,
+CI, installer or external-service changes; delivery is separate from implementation.
+
+### Quick panel verification (2026-10-31)
+
+- RED/GREEN: new shortcut tests failed on missing routing/migration; UI and integration
+  tests failed on the missing view/controller. Existing test expectations include the
+  new action, while every previous action and custom binding remains supported.
+- Reproduced a native process-exit failure with the unowned tool window. Giving the
+  window its Dashboard as the Qt owner removed the failure. Regression checks require
+  this ownership, verify child destruction, and launch/quit the real app with the quick
+  panel open and a shared draft. No test was skipped or exception suppressed.
+- Styled visual checks exposed a note-collapse height bug and a clipped button at
+  320px. Layout activation and existing compact button styling corrected both, with
+  a native regression test. Existing theme and standard icons are reused.
+- Final full suites ran serially with native Windows Qt: 468 tests passed on Python
+  3.12 (48.43s) and Python 3.11 (47.69s), both process exit zero. Ruff, synchronized
+  metadata (still 0.1.0), and isolated wheel build passed. Wheel archive integrity and
+  exact packaged source for both new modules plus app/dashboard/hotkeys were checked.
+- Verified shared multiline draft/save/pin, failed storage writes, Enter/Escape,
+  full/quick navigation, profile text, finder, area capture cancellation/success/failure,
+  hidden full-monitor capture, keep-hidden preferences, modal/import/shutdown guards,
+  focus mode, saved position and recovery from an offscreen position.
+- Inspected the compact, expanded-note, 320px/long-profile and integrated quick panel,
+  plus the full panel at 470x730, under the actual stylesheet. Visual fixtures and
+  disposable data remain under ignored build/quick-panel-visual-qa.
+- Source receipts: https://doc.qt.io/qtforpython-6/PySide6/QtWidgets/QDialog.html
+  and https://doc.qt.io/qtforpython-6/PySide6/QtCore/QSignalBlocker.html.
+- Installer, clean-machine, real-game, high-DPI/multi-monitor and screen-reader acceptance
+  were not run. No dependency, schema, version or release-workflow change was made.
+  Record local verification commits separately; publication requires a delivery request.

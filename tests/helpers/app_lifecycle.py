@@ -66,6 +66,15 @@ class ObservedDashboard(Dashboard):
         print(
             "READY" if self.shortcut_status() and self.tray.isVisible() else "NOT_READY", flush=True
         )
+        if mode == "quick_panel":
+            self.show_quick_panel()
+            panel = self.quick_panel.panel
+            assert panel.isVisible() and not self.isVisible()
+            panel.note_button.click()
+            panel.note_editor.setPlainText("Quick panel exit clue")
+            print("QUICK_VISIBLE", flush=True)
+            QTimer.singleShot(100, self.quit_app)
+            return
         if mode != "normal":
             self.note_input.setPlainText("Busy exit clue")
             self.settings.setValue("capture/delay_seconds", 3)

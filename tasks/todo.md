@@ -52,3 +52,11 @@
   serial Python 3.11/3.12 suites, Ruff and release metadata verification.
 - [ ] External acceptance: clean Windows without Python and representative real games;
   actual installation, interaction, retention and performance evidence before release.
+
+# Compact quick panel
+
+- [x] Shortcut: new configurable action, collision-safe upgrade and listener/app routing.
+- [x] View/coordinator: compact accessible controls, shared draft and game label, existing
+  save/pin/finder paths, capture/modal/shutdown lifecycle and remembered safe position.
+- [x] Verification: focused behavioral regressions, native visual/keyboard checks,
+  English README, full serial Python 3.11/3.12 suites, Ruff, metadata and wheel build.

@@ -66,3 +66,16 @@ def test_real_app_busy_exit_drains_tasks_and_preserves_draft(tmp_path, mode):
     assert "PREMATURE" not in result.stdout
     assert NoteDraftStore(tmp_path / "data/drafts/quick-note.json").load().text == "Busy exit clue"
     assert list((tmp_path / "data/captures").glob("*.png")) == []
+
+
+def test_real_app_quick_panel_exit_preserves_the_shared_draft(tmp_path):
+    script = Path(__file__).parent / "helpers" / "app_lifecycle.py"
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+    result = subprocess.run(
+        [sys.executable, "-X", "faulthandler", "-u", str(script), str(tmp_path), "quick_panel"],
+        capture_output=True, text=True, env=environment, timeout=20, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "QUICK_VISIBLE" in result.stdout
+    assert NoteDraftStore(tmp_path / "data/drafts/quick-note.json").load().text == "Quick panel exit clue"

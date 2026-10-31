@@ -69,6 +69,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Keep restored pins visible when monitors or resolutions change
 - Persist everything locally in SQLite
 - Configurable global shortcuts and a system tray menu
+- Optional compact quick panel for Capture, Quick note, and Find with a shared note draft
 - Single-instance startup: opening the app again restores the existing control panel
 - Central settings window for overlay, profile, startup, update, and shortcut preferences
 - Local troubleshooting checks and a privacy-safe diagnostic report for support
@@ -89,6 +90,7 @@ After an unexpected exit, the next launch recovers the startup lock automaticall
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+Shift+G` | Show or hide the control panel |
+| `Ctrl+Shift+Q` | Show or hide the compact quick panel |
 | `Ctrl+Shift+F` | Open the quick card finder |
 | `Ctrl+Shift+S` | Capture a screen region |
 | `Ctrl+Shift+D` | Save a full-monitor screenshot immediately |
@@ -101,6 +103,31 @@ After an unexpected exit, the next launch recovers the startup lock automaticall
 Choose **Keyboard shortcuts…** in the control panel or tray menu to replace any default.
 Changes are saved locally and take effect immediately. Gaming Buddy prevents duplicate,
 empty, and modifier-free shortcuts.
+
+## Compact quick panel
+
+Press `Ctrl+Shift+Q`, choose **Quick panel…** from the tray, or use **Quick panel** in
+the full panel header. The small movable window shows the current game and three actions:
+**Capture**, **Quick note**, and **Find**. **Full panel** returns to the complete library
+and settings. Opening one panel hides the other; the existing `Ctrl+Shift+G` shortcut
+continues to open the full panel. The new shortcut is configurable in Settings and
+receives a free alternative when its default is already used by a saved binding.
+
+**Quick note** expands an editor with **Save** and **Pin note**. It shares the full
+panel's draft and existing local autosave. Switching panels, closing the quick panel,
+or pressing Escape keeps that draft. A failed save keeps the text available for retry;
+successful saves clear both editors. Enter in the editor inserts a newline.
+
+Capture uses the existing area-capture settings. Both area and full-monitor captures
+hide the quick panel before grabbing the screen. Cancelling an area capture restores
+the originating panel. Successful captures obey **Keep panel hidden**; full-monitor
+capture always leaves panels hidden. Capture failures return to the full panel for
+recovery. **Find** opens the existing quick card finder and dismisses the quick panel.
+
+The quick panel remembers its position locally and is brought back onto an available
+screen when reopened. It stays closed during capture, application-modal dialogs,
+card-pack import, and shutdown. Entering focus mode also hides it. Borderless Windowed
+remains the recommended game display mode; this is a normal desktop overlay.
 
 Full-monitor capture always saves a lossless PNG to the current game profile without
 opening review or creating a new pin. Choose the primary monitor, the monitor under

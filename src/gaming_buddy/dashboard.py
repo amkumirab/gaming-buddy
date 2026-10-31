@@ -116,6 +116,7 @@ from gaming_buddy.profiles import (
     belongs_to_profile,
 )
 from gaming_buddy.quick_finder import QuickFinderDialog, updated_search_history
+from gaming_buddy.quick_panel_controller import QuickPanelController
 from gaming_buddy.settings_dialog import SettingsDialog, SettingsSnapshot
 from gaming_buddy.shortcut_dialog import ShortcutDialog
 from gaming_buddy.shutdown import ShutdownController
@@ -233,6 +234,7 @@ class Dashboard(QMainWindow):
         self._restore_settings()
         self._restore_note_draft()
         self.refresh_cards()
+        self.quick_panel = QuickPanelController(self)
         for delay, callback in (
             (0, self._purge_expired_trash), (0, self.restore_workspace),
             (0, self.game_detector.start), (350, self._show_first_run_setup),
@@ -310,6 +312,11 @@ class Dashboard(QMainWindow):
         brand_row = QHBoxLayout()
         brand_row.addWidget(brand)
         brand_row.addStretch(1)
+        self.quick_panel_button = QPushButton("Quick panel")
+        self.quick_panel_button.setObjectName("compact")
+        self.quick_panel_button.setAccessibleName("Open quick panel")
+        self.quick_panel_button.clicked.connect(self.show_quick_panel)
+        brand_row.addWidget(self.quick_panel_button)
         brand_row.addWidget(self.update_button)
         subtitle = QLabel("Keep clues, builds, and screenshots within reach while you play.")
         subtitle.setObjectName("subtitle")
@@ -1025,6 +1032,9 @@ class Dashboard(QMainWindow):
         menu = QMenu()
         show_action = QAction("Show Gaming Buddy", menu)
         show_action.triggered.connect(self.show_panel)
+        self.quick_panel_action = QAction("Quick panel…", menu)
+        self.quick_panel_action.setToolTip(self.quick_panel_button.toolTip())
+        self.quick_panel_action.triggered.connect(self.show_quick_panel)
         quick_finder_action = QAction("Quick card finder…", menu)
         quick_finder_action.triggered.connect(self.show_quick_finder)
         capture_action = QAction("Capture area", menu)
@@ -1088,6 +1098,7 @@ class Dashboard(QMainWindow):
         quit_action = QAction("Quit", menu)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action)
+        menu.addAction(self.quick_panel_action)
         menu.addAction(quick_finder_action)
         menu.addAction(capture_action)
         menu.addAction(full_capture_action)
@@ -1584,6 +1595,11 @@ class Dashboard(QMainWindow):
         self.statusBar().showMessage("Global shortcuts updated", 3000)
 
     def _update_shortcut_labels(self) -> None:
+        self.quick_panel_button.setToolTip(
+            f"Open the compact quick panel ({self.shortcuts['toggle_quick_panel']})"
+        )
+        if hasattr(self, "quick_panel_action"):
+            self.quick_panel_action.setToolTip(self.quick_panel_button.toolTip())
         panel = self.shortcuts["toggle_panel"]
         finder = self.shortcuts["quick_finder"]
         capture = self.shortcuts["capture_area"]
@@ -1811,6 +1827,7 @@ class Dashboard(QMainWindow):
         except DraftError as error:
             self.statusBar().showMessage(str(error), 3500)
         self.note_draft_bar.hide()
+        self.quick_panel.sync_draft()
 
     def _make_note(self) -> Card | None:
         content = self.note_input.toPlainText().strip()
@@ -1873,6 +1890,7 @@ class Dashboard(QMainWindow):
         try:
             screen = select_monitor(str(self.settings.value("capture/full_screen_monitor", "primary")))
             self._capture_panel_was_visible = self.isVisible()
+            self.quick_panel.capture_started()
             self.hide()
             windows = list(self.pins.values())
             if self._quick_finder is not None:
@@ -1902,6 +1920,7 @@ class Dashboard(QMainWindow):
             return
         self._capture_in_progress = True
         self._capture_panel_was_visible = self.isVisible()
+        self.quick_panel.capture_started()
         self.hide()
         delay_seconds = normalize_capture_delay(
             self.settings.value("capture/delay_seconds", 0)
@@ -1931,10 +1950,7 @@ class Dashboard(QMainWindow):
             self.capture_overlay.selected.connect(self._save_capture)
             self.capture_overlay.cancelled.connect(self._capture_cancelled)
         except RuntimeError as exc:
-            self._capture_in_progress = False
-            self.capture_overlay = None
-            self.show_panel()
-            QMessageBox.warning(self, "Capture failed", str(exc))
+            self._capture_failed(str(exc))
 
     def _save_capture(self, image: QImage, *, instant: bool = False, game: str | None = None) -> None:
         if self._quitting:
@@ -2002,8 +2018,9 @@ class Dashboard(QMainWindow):
             type=bool,
         )
         if keep_hidden or instant:
+            self.quick_panel.capture_finished(restore=False)
             self.hide()
-        else:
+        elif not self.quick_panel.capture_finished(restore=True):
             self.show_panel()
         action_text = "Saved and pinned" if pin_capture else "Saved to the library"
         message = f"{action_text} · {image.width()} × {image.height()} px · lossless PNG"
@@ -2054,6 +2071,8 @@ class Dashboard(QMainWindow):
         self.capture_overlay = None
         if self._quitting:
             return
+        if self.quick_panel.capture_finished(restore=True):
+            return
         if self._capture_panel_was_visible:
             self.show_panel()
         else:
@@ -2063,6 +2082,7 @@ class Dashboard(QMainWindow):
         self.diagnostic_history.record(IssueKind.CAPTURE)
         self._capture_in_progress = False
         self.capture_overlay = None
+        self.quick_panel.capture_finished(restore=False)
         self.show_panel()
         QMessageBox.warning(self, "Capture failed", message)
 
@@ -3487,6 +3507,7 @@ class Dashboard(QMainWindow):
                 panel_visible=self.isVisible(),
                 pins=presentations,
             )
+            self.quick_panel.hide()
             self.pin_visibility.hide_timer.stop()
             visible_ids = {card.id for card in cards}
             for card_id, pin in self.pins.items():
@@ -3610,6 +3631,12 @@ class Dashboard(QMainWindow):
                 pin.hide()
         if show_message:
             self.statusBar().showMessage("Pinned workspace restored", 2500)
+
+    def show_quick_panel(self, _checked: bool = False) -> None:
+        self.quick_panel.show()
+
+    def toggle_quick_panel(self) -> None:
+        self.quick_panel.toggle()
 
     def toggle_panel(self) -> None:
         if self._quitting:
