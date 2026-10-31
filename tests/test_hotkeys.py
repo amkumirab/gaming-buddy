@@ -14,6 +14,7 @@ def test_default_shortcuts_are_valid():
     assert validate_shortcuts(DEFAULT_SHORTCUTS) == DEFAULT_SHORTCUTS
     assert shortcut_hooks(DEFAULT_SHORTCUTS) == {
         "toggle_panel": "<ctrl>+<shift>+g",
+        "toggle_quick_panel": "<ctrl>+<shift>+q",
         "quick_finder": "<ctrl>+<shift>+f",
         "capture_area": "<ctrl>+<shift>+s",
         "capture_screen": "<ctrl>+<shift>+d",

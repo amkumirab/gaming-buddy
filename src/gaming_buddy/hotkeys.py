@@ -5,6 +5,7 @@ from PySide6.QtCore import QObject, Signal
 
 SHORTCUT_LABELS = {
     "toggle_panel": "Show or hide panel",
+    "toggle_quick_panel": "Show or hide quick panel",
     "quick_finder": "Find a saved card",
     "capture_area": "Capture screen area",
     "capture_screen": "Capture full monitor",
@@ -17,6 +18,7 @@ SHORTCUT_LABELS = {
 
 DEFAULT_SHORTCUTS = {
     "toggle_panel": "Ctrl+Shift+G",
+    "toggle_quick_panel": "Ctrl+Shift+Q",
     "quick_finder": "Ctrl+Shift+F",
     "capture_area": "Ctrl+Shift+S",
     "capture_screen": "Ctrl+Shift+D",
@@ -123,13 +125,16 @@ def validate_shortcuts(shortcuts: dict[str, str]) -> dict[str, str]:
 def complete_shortcuts(saved: dict[str, str]) -> dict[str, str]:
     """Add a new action without taking a combination already used by an older setup."""
     shortcuts = DEFAULT_SHORTCUTS | saved
-    if "capture_screen" not in saved:
+    for action in ("capture_screen", "toggle_quick_panel"):
+        if action in saved:
+            continue
         used = {parse_shortcut(value)[1] for key, value in shortcuts.items()
-                if key != "capture_screen"}
-        candidates = ["Ctrl+Shift+D", "Ctrl+Alt+Shift+D"] + [
+                if key != action}
+        default = DEFAULT_SHORTCUTS[action]
+        candidates = [default, default.replace("Ctrl+Shift+", "Ctrl+Alt+Shift+")] + [
             f"Ctrl+Alt+Shift+F{number}" for number in range(1, 25)
         ]
-        shortcuts["capture_screen"] = next(
+        shortcuts[action] = next(
             value for value in candidates if parse_shortcut(value)[1] not in used
         )
     return validate_shortcuts(shortcuts)
@@ -142,6 +147,7 @@ def shortcut_hooks(shortcuts: dict[str, str]) -> dict[str, str]:
 
 class GlobalHotkeys(QObject):
     toggle_panel = Signal()
+    toggle_quick_panel = Signal()
     quick_finder = Signal()
     capture_area = Signal()
     capture_screen = Signal()
@@ -173,6 +179,7 @@ class GlobalHotkeys(QObject):
             self._listener = keyboard.GlobalHotKeys(
                 {
                     hooks["toggle_panel"]: self.toggle_panel.emit,
+                    hooks["toggle_quick_panel"]: self.toggle_quick_panel.emit,
                     hooks["quick_finder"]: self.quick_finder.emit,
                     hooks["capture_area"]: self.capture_area.emit,
                     hooks["capture_screen"]: self.capture_screen.emit,
