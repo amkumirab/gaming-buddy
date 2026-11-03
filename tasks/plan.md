@@ -450,3 +450,38 @@ CI, installer or external-service changes; delivery is separate from implementat
 - Installer, clean-machine, real-game, high-DPI/multi-monitor and screen-reader acceptance
   were not run. No dependency, schema, version or release-workflow change was made.
   Record local verification commits separately; publication requires a delivery request.
+
+## Interactive first-run walkthrough (2026-11-03)
+
+Implemented the approved four-step practice flow; see
+docs/specs/interactive-first-run.md. A compact card lives above the existing tabs,
+with no modal tutorial, second draft, capture implementation, or database schema change.
+The reference guide and startup preference remain available through Guide.
+
+- Progress persists in QSettings, including skipped outcomes, pause state and the
+  practice note ID. Existing users retain the old first-run flag and may start via Help.
+- Successful existing note, pin, screenshot and Quick Panel operations advance steps.
+  Tests cover failed SQLite writes, cancelled capture, deleted practice notes, drafts,
+  restored pins, live shortcuts, keep-hidden preferences and busy/modal/shutdown guards.
+- Real-app subprocess testing saves a note, exits normally, restarts, resumes the
+  pin step, pins the same note, opens Quick Panel and exits with code zero. The saved
+  note remains intact in SQLite. This exercises the source application, not an installer.
+- This exposed an existing lifecycle-harness isolation bug: QSettings(organization,
+  application) always uses NativeFormat, ignoring setDefaultFormat. The helper now
+  explicitly injects a disposable INI file with fallbacks disabled. The test verifies
+  its settings path and confirms real native settings do not change across both launches.
+- Official constructor reference:
+  https://doc.qt.io/qtforpython-6/PySide6/QtCore/QSettings.html
+- Native visual QA inspected every step at 430x730 with the actual app stylesheet;
+  labels wrap and action buttons fit. Keyboard tests cover Space and Tab navigation.
+  Visuals and disposable workspaces remain under ignored build/walkthrough-visual-qa.
+- Final serial suites: Python 3.12.10, 491 passed in 57.31s; Python 3.11.9,
+  491 passed in 56.19s. Both processes exited zero. Ruff passed; release metadata
+  remains synchronized at 0.1.0. The standard isolated wheel build succeeded.
+- Wheel size 886958 bytes, SHA-256:
+  6dfc1c95f2870e9a6f0c8504fba59cd0154c57e1120f1c8851c0f28221bb0c97.
+- Reviewed state transitions, Qt ownership/lifetime, success-only completion hooks,
+  settings isolation, dependencies and draft/data preservation. No new dependency,
+  version, release or CI change. No unresolved finding from the scoped source review.
+- Installed-app, clean-machine/no-Python, real-game, high-DPI/multi-monitor and
+  screen-reader acceptance have not been run. Publication is a separate delivery step.

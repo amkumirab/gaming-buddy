@@ -60,3 +60,12 @@
   save/pin/finder paths, capture/modal/shutdown lifecycle and remembered safe position.
 - [x] Verification: focused behavioral regressions, native visual/keyboard checks,
   English README, full serial Python 3.11/3.12 suites, Ruff, metadata and wheel build.
+
+# Interactive first-run walkthrough
+
+- [x] Progress: persistent steps, skipped outcomes, pause/resume and practice note ID,
+  with safe settings parsing and keyboard-accessible, wrapping step cards.
+- [x] Integration: existing editor, pin, capture and Quick Panel paths; first-run upgrade
+  behavior, reference guide, failed writes, deleted notes, busy/modal and shutdown guards.
+- [x] Verification: real-app restart/exit, native small-window layout, full serial
+  Python 3.11/3.12 suites, Ruff, metadata, wheel packaging and scoped code review.

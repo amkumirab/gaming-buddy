@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, QTimer
 
 import gaming_buddy.app as app_module
+import gaming_buddy.dashboard as dashboard_module
 import gaming_buddy.updates as update_module
 from gaming_buddy.dashboard import Dashboard
 from gaming_buddy.paths import ensure_data_dirs
@@ -20,11 +21,10 @@ root = Path(sys.argv[1])
 mode = sys.argv[2] if len(sys.argv) > 2 else "normal"
 started = threading.Event()
 release_worker = threading.Event()
-QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-for scope in (QSettings.Scope.UserScope, QSettings.Scope.SystemScope):
-    QSettings.setPath(QSettings.Format.IniFormat, scope, str(root / "settings"))
-settings = QSettings("GamingBuddy", "GamingBuddy")
-settings.setValue("onboarding/completed", True)
+settings = QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)
+settings.setFallbacksEnabled(False)
+dashboard_module.QSettings = lambda *_: settings
+settings.setValue("onboarding/completed", mode != "walkthrough")
 settings.setValue("updates/automatic_checks", False)
 settings.sync()
 app_module.ensure_data_dirs = lambda: ensure_data_dirs(root / "data")
@@ -63,9 +63,26 @@ class ObservedDashboard(Dashboard):
         QTimer.singleShot(15000, self.quit_app)
 
     def report_ready(self):
+        assert Path(self.settings.fileName()).resolve() == (root / "settings.ini").resolve()
         print(
             "READY" if self.shortcut_status() and self.tray.isVisible() else "NOT_READY", flush=True
         )
+        if mode in ("walkthrough", "walkthrough_resume"):
+            assert self.walkthrough_panel.isVisible()
+            if mode == "walkthrough":
+                assert self.walkthrough.progress.step == 0
+                self.note_input.setPlainText("My first clue\n\nKeep this note")
+                self.save_note()
+                assert self.walkthrough.progress.step == 1
+            else:
+                assert self.walkthrough.progress.step == 1
+                self.walkthrough_panel.action_button.click()
+                assert self.walkthrough.progress.step == 2
+                self.show_quick_panel()
+                assert self.quick_panel.panel.isVisible()
+            print("WALKTHROUGH_OK", flush=True)
+            QTimer.singleShot(100, self.quit_app)
+            return
         if mode == "quick_panel":
             self.show_quick_panel()
             panel = self.quick_panel.panel
@@ -113,8 +130,9 @@ class ObservedDashboard(Dashboard):
 
     def show_panel(self):
         super().show_panel()
-        print("ACTIVATED", flush=True)
-        QTimer.singleShot(100, self.quit_app)
+        if not mode.startswith("walkthrough"):
+            print("ACTIVATED", flush=True)
+            QTimer.singleShot(100, self.quit_app)
 
 
 app_module.Dashboard = ObservedDashboard

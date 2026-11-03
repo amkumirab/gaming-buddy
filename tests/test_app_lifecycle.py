@@ -8,8 +8,10 @@ import threading
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QSettings
 
 from gaming_buddy.note_drafts import NoteDraftStore
+from gaming_buddy.storage import CardStore
 
 
 def test_real_app_second_launch_and_normal_shutdown_exit_cleanly(tmp_path):
@@ -79,3 +81,29 @@ def test_real_app_quick_panel_exit_preserves_the_shared_draft(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "QUICK_VISIBLE" in result.stdout
     assert NoteDraftStore(tmp_path / "data/drafts/quick-note.json").load().text == "Quick panel exit clue"
+
+
+def test_real_app_walkthrough_resumes_saved_note_and_exits_cleanly(tmp_path):
+    script = Path(__file__).parent / "helpers" / "app_lifecycle.py"
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+    native = QSettings("GamingBuddy", "GamingBuddy")
+    original_keys = native.allKeys()
+    original_values = [native.value(key) for key in original_keys]
+    for mode in ("walkthrough", "walkthrough_resume"):
+        result = subprocess.run(
+            [sys.executable, "-X", "faulthandler", "-u", str(script), str(tmp_path), mode],
+            capture_output=True, text=True, env=environment, timeout=20, check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "WALKTHROUGH_OK" in result.stdout
+    saved = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    assert saved.value("onboarding/walkthrough/step", type=int) == 2
+    native.sync()
+    assert native.allKeys() == original_keys
+    assert [native.value(key) for key in original_keys] == original_values
+    with CardStore(tmp_path / "data/gaming-buddy.sqlite3") as store:
+        cards = store.list()
+        assert len(cards) == 1
+        assert cards[0].content == "My first clue\n\nKeep this note"
+        assert cards[0].pinned

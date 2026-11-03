@@ -73,7 +73,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Single-instance startup: opening the app again restores the existing control panel
 - Central settings window for overlay, profile, startup, update, and shortcut preferences
 - Local troubleshooting checks and a privacy-safe diagnostic report for support
-- First-run setup guide with a quick overview of capture, pins, and shortcuts
+- Resumable first-run walkthrough using real notes, pins, screenshots, and Quick Panel
 - Optional launch at Windows sign-in without administrator access
 - Per-user Windows installer with clean update and uninstall support
 - Check GitHub Releases for updates and install a verified Windows release with permission
@@ -103,6 +103,25 @@ After an unexpected exit, the next launch recovers the startup lock automaticall
 Choose **Keyboard shortcuts…** in the control panel or tray menu to replace any default.
 Changes are saved locally and take effect immediately. Gaming Buddy prevents duplicate,
 empty, and modifier-free shortcuts.
+
+## Getting started
+
+New installations show a small walkthrough inside the full panel. Follow its four steps:
+write and save a note, pin it, save a screenshot, and open Quick Panel. The buttons use
+the regular editor and capture tools; your practice cards remain in the Library.
+An existing draft is never replaced. Saving and pinning a note together completes both
+note steps. Failed saves and cancelled captures do not count as completed steps.
+
+Choose **Skip step** to move on, or **Later** to hide the walkthrough. Progress is saved
+locally and an unfinished, unpaused walkthrough resumes when the app restarts. **Help**
+in the full panel or **Getting started…** in the tray reopens it. At the end, the summary
+shows completed and skipped steps separately; **Restart** resets only guide progress,
+while **Finish** dismisses it. Neither action deletes cards or changes capture settings.
+
+Existing users are not shown the walkthrough automatically after upgrading; open Help
+to try it. **Guide…** opens the reference overview, including the Windows sign-in option.
+The instructions reflect your current shortcut bindings. If capture settings keep the
+panel hidden, use your full-panel shortcut to return and continue.
 
 ## Compact quick panel
 
@@ -441,6 +460,10 @@ Startup unit tests use an isolated application double so they cannot
 change the shared GUI's name, style, icon, or exit behavior. A subprocess lifecycle test
 runs the real app against disposable data, checks tray and shortcut readiness, opens a
 second copy, and verifies normal shutdown. It does not test the packaged installer.
+The subprocess uses an explicit INI settings file under its disposable workspace;
+changing Qt's default format alone does not isolate the organization/application
+settings constructor from the Windows registry. The walkthrough lifecycle test restarts
+the app, pins the saved practice note, and verifies native settings remain unchanged.
 The update dialog also has an isolated native Qt shutdown regression test. Its button
 handlers use bound receiver methods rather than lambdas that retain the window until
 finalization. Update results are emitted only after the checking state has been cleared,
