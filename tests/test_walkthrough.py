@@ -2,6 +2,7 @@ import pytest
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtTest import QTest
 
+from gaming_buddy.theme import STYLESHEET
 from gaming_buddy.walkthrough import WalkthroughPanel, WalkthroughProgress
 
 
@@ -54,5 +55,25 @@ def test_panel_keyboard_actions_and_wrapping_plain_text(qt_application):
     panel.set_step(4, "You're ready", "3 completed; 1 skipped.", "Restart")
     assert not panel.skip_button.isVisible()
     assert panel.pause_button.text() == "Finish"
+    panel.close()
+    panel.deleteLater()
+
+
+def test_themed_step_card_fits_small_window_and_keyboard_tab_order(qt_application):
+    panel = WalkthroughPanel()
+    panel.setStyleSheet(STYLESHEET)
+    panel.set_step(2, "Capture a clue", "Capture a clue. " * 16, "Capture")
+    panel.resize(398, panel.sizeHint().height())
+    panel.show()
+    qt_application.processEvents()
+    qt_application.processEvents()
+    assert panel.description.height() >= panel.description.heightForWidth(panel.description.width())
+    for button in (panel.action_button, panel.skip_button, panel.pause_button, panel.reference_button):
+        assert button.width() >= button.sizeHint().width()
+    panel.action_button.setFocus()
+    QTest.keyClick(panel.action_button, Qt.Key.Key_Tab)
+    assert panel.focusWidget() is panel.skip_button
+    QTest.keyClick(panel.skip_button, Qt.Key.Key_Tab)
+    assert panel.focusWidget() is panel.pause_button
     panel.close()
     panel.deleteLater()

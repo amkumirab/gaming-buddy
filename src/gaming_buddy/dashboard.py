@@ -137,6 +137,8 @@ from gaming_buddy.updates import (
     is_newer_version,
     should_check_automatically,
 )
+from gaming_buddy.walkthrough import WalkthroughPanel
+from gaming_buddy.walkthrough_controller import WalkthroughController
 from gaming_buddy.workspace_backup import (
     BackupError,
     create_workspace_backup,
@@ -235,6 +237,7 @@ class Dashboard(QMainWindow):
         self._restore_note_draft()
         self.refresh_cards()
         self.quick_panel = QuickPanelController(self)
+        self.walkthrough = WalkthroughController(self)
         for delay, callback in (
             (0, self._purge_expired_trash), (0, self.restore_workspace),
             (0, self.game_detector.start), (350, self._show_first_run_setup),
@@ -324,6 +327,9 @@ class Dashboard(QMainWindow):
         hero_layout.addLayout(brand_row)
         hero_layout.addWidget(subtitle)
         layout.addWidget(hero)
+
+        self.walkthrough_panel = WalkthroughPanel()
+        layout.addWidget(self.walkthrough_panel)
 
         self.main_tabs = QTabWidget()
         self.main_tabs.setObjectName("mainTabs")
@@ -1165,13 +1171,14 @@ class Dashboard(QMainWindow):
 
     def _show_first_run_setup(self) -> None:
         completed = self.settings.value("onboarding/completed", False, type=bool)
-        if completed:
-            return
-        self.show_getting_started()
-        self.settings.setValue("onboarding/completed", True)
-        self.settings.sync()
+        if (not completed or not self.walkthrough.progress.paused) and self.walkthrough.start():
+            self.settings.setValue("onboarding/completed", True)
+            self.settings.sync()
 
     def show_getting_started(self, _checked: bool = False) -> None:
+        self.walkthrough.start()
+
+    def show_reference_guide(self, _checked: bool = False) -> None:
         launch_at_sign_in = self.startup_manager.is_enabled()
         dialog = OnboardingDialog(self.shortcuts, launch_at_sign_in, self)
         if dialog.exec() and dialog.launch_at_sign_in != launch_at_sign_in:
@@ -1876,6 +1883,7 @@ class Dashboard(QMainWindow):
                 "then try again. You can also run the checks in Settings > Troubleshooting.",
             )
             return False
+        self.walkthrough.note_saved(card)
         return True
 
     def start_full_screen_capture(self, _checked: bool = False) -> None:
@@ -2009,6 +2017,7 @@ class Dashboard(QMainWindow):
             return
         if pin_capture:
             self.show_pin(card)
+        self.walkthrough.capture_saved()
         self.refresh_cards()
         self._capture_in_progress = False
         self.capture_overlay = None
@@ -2268,6 +2277,7 @@ class Dashboard(QMainWindow):
             existing.raise_()
             if persist:
                 self.refresh_cards()
+                self.walkthrough.pin_shown(card)
             return
         pin = PinWidget(
             card,
@@ -2297,6 +2307,7 @@ class Dashboard(QMainWindow):
         pin.show()
         if persist:
             self.refresh_cards()
+            self.walkthrough.pin_shown(card)
 
     def restore_workspace(self) -> None:
         restored = 0

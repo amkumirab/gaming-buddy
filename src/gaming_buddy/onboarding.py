@@ -104,7 +104,7 @@ class OnboardingDialog(QDialog):
         layout.addWidget(self.launch_checkbox)
 
         footer = QHBoxLayout()
-        reminder = QLabel("You can reopen this guide from the panel or tray menu.")
+        reminder = QLabel("Open Help, then Guide… to return to this reference.")
         reminder.setObjectName("muted")
         reminder.setWordWrap(True)
         start_button = QPushButton("Start using Gaming Buddy")

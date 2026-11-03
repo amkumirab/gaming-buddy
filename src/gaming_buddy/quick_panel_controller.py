@@ -63,6 +63,7 @@ class QuickPanelController(QObject):
         (panel.note_editor if panel.note_button.isChecked() else panel.capture_button).setFocus(
             Qt.FocusReason.ShortcutFocusReason
         )
+        host.walkthrough.quick_panel_opened()
 
     def toggle(self) -> None:
         if self.panel is not None and self.panel.isVisible():
