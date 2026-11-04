@@ -14,9 +14,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gaming_buddy.capture_button import CaptureButton
+
 
 class QuickPanel(QDialog):
     capture_requested = Signal()
+    capture_text_requested = Signal()
     find_requested = Signal()
     full_panel_requested = Signal()
     save_requested = Signal(bool)
@@ -45,7 +48,8 @@ class QuickPanel(QDialog):
         self.game_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         layout.addWidget(self.game_label)
         actions = QHBoxLayout()
-        self.capture_button = self._button("Capture", "Capture a screen region")
+        actions.setSpacing(8)
+        self.capture_button = CaptureButton()
         self.note_button = self._button("Quick note", "Write a note for the current game")
         self.find_button = self._button("Find", "Find and pin a saved card")
         self.note_button.setCheckable(True)
@@ -54,11 +58,14 @@ class QuickPanel(QDialog):
             (self.note_button, QStyle.StandardPixmap.SP_FileIcon),
             (self.find_button, QStyle.StandardPixmap.SP_FileDialogContentsView),
         ):
-            button.setObjectName("compact")
+            if button is not self.capture_button:
+                button.setObjectName("compact")
             button.setIcon(self.style().standardIcon(icon))
+            button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             actions.addWidget(button, 1)
         layout.addLayout(actions)
-        self.capture_button.clicked.connect(self.capture_requested)
+        self.capture_button.capture_requested.connect(self.capture_requested)
+        self.capture_button.text_requested.connect(self.capture_text_requested)
         self.find_button.clicked.connect(self.find_requested)
         self.note_form = QWidget()
         form = QVBoxLayout(self.note_form)

@@ -39,6 +39,7 @@ class QuickPanelController(QObject):
             panel = self.panel = QuickPanel(host)
             panel.installEventFilter(self)
             panel.capture_requested.connect(host.start_capture)
+            panel.capture_text_requested.connect(host.start_text_capture)
             panel.find_requested.connect(self._find)
             panel.full_panel_requested.connect(self._full_panel)
             panel.save_requested.connect(self._save_note)

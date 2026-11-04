@@ -196,7 +196,7 @@ QToolBar#markdownToolbar QToolButton:hover {
     border-color: #7657ff;
 }
 QToolBar#markdownToolbar QToolButton:pressed { background: #201b2e; }
-QPushButton {
+QPushButton, QToolButton#captureButton {
     background: #29233a;
     border: 1px solid #44395e;
     border-radius: 9px;
@@ -204,13 +204,13 @@ QPushButton {
     padding: 9px 13px;
     font-weight: 600;
 }
-QPushButton:hover { background: #352d4c; }
-QPushButton:pressed { background: #201b2e; }
-QPushButton:focus {
+QPushButton:hover, QToolButton#captureButton:hover { background: #352d4c; }
+QPushButton:pressed, QToolButton#captureButton:pressed { background: #201b2e; }
+QPushButton:focus, QToolButton#captureButton:focus {
     border: 2px solid #a893ff;
     padding: 8px 12px;
 }
-QPushButton:disabled {
+QPushButton:disabled, QToolButton#captureButton:disabled {
     background: #1b1823;
     border-color: #2d2838;
     color: #716b7d;
@@ -225,7 +225,11 @@ QPushButton#primary {
 }
 QPushButton#primary:hover { background: #866cff; }
 QPushButton#danger { color: #ff9da8; }
-QPushButton#compact { padding: 5px 9px; }
+QPushButton#compact, QToolButton#captureButton { padding: 5px 9px; }
+QToolButton#captureButton::menu-button {
+    width: 16px;
+    border-left: 1px solid #44395e;
+}
 QCheckBox {
     min-height: 28px;
     spacing: 8px;

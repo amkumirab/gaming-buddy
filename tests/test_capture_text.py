@@ -4,10 +4,12 @@ import threading
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QSettings, Qt, QTimer
 from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QDialog
 
 import gaming_buddy.dashboard as dashboard_module
 from gaming_buddy.dashboard import Dashboard
 from gaming_buddy.models import Card, CardKind
+from gaming_buddy.quick_finder import find_cards
 from gaming_buddy.storage import CardStore
 from gaming_buddy.text_recognition import RecognitionLanguage, RecognitionResult
 from gaming_buddy.text_recognition_dialog import TextRecognitionDialog
@@ -151,3 +153,116 @@ def test_cancel_does_not_write_recognized_text(host):
     dialog.text.setPlainText("Discard this result")
     dialog.reject()
     assert host.store.get(card.id).content == "Old text"
+
+
+@pytest.mark.parametrize("action", ["save_and_pin", "save_only", "review"])
+def test_capture_text_saves_one_original_and_reviews_without_changing_preferences(host, action):
+    host.settings.setValue("capture/action", action)
+    host.settings.setValue("capture/keep_panel_hidden", True)
+    host.note_input.setPlainText("Keep my note draft")
+    host.show()
+    host.start_text_capture()
+    assert host.capture_text.pending and host._capture_in_progress
+    assert not host.isVisible()
+    host._capture_timer.stop()
+    original = image()
+    host._save_capture(original)
+    dialog = host._text_recognition_dialog
+    assert dialog.isVisible() and not dialog.preview.pixmap().isNull()
+    assert not host.capture_text.pending
+    cards = host.store.list()
+    assert len(cards) == 1 and not cards[0].pinned
+    assert QImage(cards[0].image_path) == original
+    assert host.settings.value("capture/action") == action
+    assert host.note_input.toPlainText() == "Keep my note draft"
+    assert not host.isVisible()
+    dialog.start_recognition()
+    wait_ready(dialog)
+    assert host.store.get(cards[0].id).content == ""
+    dialog.accept()
+    assert len(host.store.list()) == 1
+    assert find_cards(host.store.list(), "0451")[0].id == cards[0].id
+
+
+@pytest.mark.parametrize("terminal", ["cancel", "failure", "quit"])
+def test_capture_text_intent_clears_before_next_normal_capture(host, monkeypatch, terminal):
+    monkeypatch.setattr(dashboard_module.QMessageBox, "warning", lambda *_: None)
+    host.start_text_capture()
+    host._capture_timer.stop()
+    if terminal == "cancel":
+        host._capture_cancelled()
+    elif terminal == "failure":
+        host._capture_failed("Controlled capture failure")
+    else:
+        host._stop_deferred_work()
+    assert not host.capture_text.pending
+    assert not host.store.list() and host._text_recognition_dialog is None
+    host.settings.setValue("capture/action", "save_only")
+    host.start_capture()
+    host._capture_timer.stop()
+    host._save_capture(image())
+    assert len(host.store.list()) == 1 and host._text_recognition_dialog is None
+
+
+def test_capture_text_from_quick_panel_and_existing_review_is_reused(host):
+    host.show_quick_panel()
+    quick = host.quick_panel.panel
+    quick.capture_button.text_action.trigger()
+    assert host._capture_in_progress and not quick.isVisible()
+    host._capture_timer.stop()
+    host._save_capture(image())
+    dialog = host._text_recognition_dialog
+    dialog.hide()
+    host.start_text_capture()
+    assert host._text_recognition_dialog is dialog and dialog.isVisible()
+    assert not host._capture_in_progress
+    assert not host.capture_text.pending
+
+
+def test_capture_text_obeys_busy_and_shutdown_guards(host):
+    host._quitting = True
+    host.start_text_capture()
+    assert not host.capture_text.pending
+    host._quitting = False
+    host._card_pack_dialog = object()
+    host.start_text_capture()
+    assert not host.capture_text.pending
+    host._card_pack_dialog = None
+    host.start_capture()
+    host._capture_timer.stop()
+    host.start_text_capture()
+    assert host._capture_in_progress and not host.capture_text.pending
+    host._capture_cancelled()
+
+
+def test_failed_image_save_resets_intent_and_does_not_open_review(host, monkeypatch):
+    monkeypatch.setattr(dashboard_module.QMessageBox, "warning", lambda *_: None)
+
+    def fail(_):
+        raise sqlite3.OperationalError("disk full")
+
+    monkeypatch.setattr(host.store, "add", fail)
+    host.start_text_capture()
+    host._capture_timer.stop()
+    host._save_capture(image())
+    assert not host.capture_text.pending
+    assert host._text_recognition_dialog is None
+    assert not host.store.list()
+    assert not list(host.captures_dir.glob("*.png"))
+
+
+def test_modal_blocks_text_capture_and_review_during_selection(host, qt_application):
+    modal = QDialog(host)
+    modal.setModal(True)
+    modal.show()
+    qt_application.processEvents()
+    host.start_text_capture()
+    assert not host.capture_text.pending and not host._capture_in_progress
+    modal.reject()
+    modal.deleteLater()
+    card = saved_image(host)
+    host.start_capture()
+    host._capture_timer.stop()
+    host._extract_image_text(card)
+    assert host._text_recognition_dialog is None
+    host._capture_cancelled()

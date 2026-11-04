@@ -33,6 +33,7 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QAbstractItemView,
     QApplication,
     QCheckBox,
@@ -66,6 +67,8 @@ from PySide6.QtWidgets import (
 from gaming_buddy import __version__
 from gaming_buddy.bulk_card_dialog import BulkCardDialog
 from gaming_buddy.capture import SelectionOverlay, begin_capture, grab_monitor, select_monitor
+from gaming_buddy.capture_button import CaptureButton
+from gaming_buddy.capture_text_controller import CaptureTextController
 from gaming_buddy.capture_workflow import (
     DEFAULT_CAPTURE_NOTIFICATIONS,
     DEFAULT_KEEP_PANEL_HIDDEN,
@@ -238,6 +241,7 @@ class Dashboard(QMainWindow):
         self.refresh_cards()
         self.quick_panel = QuickPanelController(self)
         self.walkthrough = WalkthroughController(self)
+        self.capture_text = CaptureTextController(self)
         for delay, callback in (
             (0, self._purge_expired_trash), (0, self.restore_workspace),
             (0, self.game_detector.start), (350, self._show_first_run_setup),
@@ -251,12 +255,12 @@ class Dashboard(QMainWindow):
 
     def _configure_button(
         self,
-        button: QPushButton,
+        button: QAbstractButton,
         icon: QStyle.StandardPixmap,
         tooltip: str,
         *,
         accessible_name: str | None = None,
-    ) -> QPushButton:
+    ) -> QAbstractButton:
         button.setIcon(self.style().standardIcon(icon))
         button.setIconSize(QSize(18, 18))
         button.setToolTip(tooltip)
@@ -471,14 +475,14 @@ class Dashboard(QMainWindow):
             "Save this note and pin it over the game",
         )
         pin_button.clicked.connect(self.pin_note)
-        capture_button = QPushButton("Capture area")
-        capture_button.setObjectName("primary")
+        capture_button = CaptureButton("Capture area")
         self._configure_button(
             capture_button,
             QStyle.StandardPixmap.SP_ComputerIcon,
-            "Select part of the screen and save it as a card",
+            "Select part of the screen; open the arrow menu for Capture text",
         )
-        capture_button.clicked.connect(self.start_capture)
+        capture_button.capture_requested.connect(self.start_capture)
+        capture_button.text_requested.connect(self.start_text_capture)
         full_capture_button = QPushButton("Capture full monitor")
         self._configure_button(
             full_capture_button,
@@ -1045,6 +1049,8 @@ class Dashboard(QMainWindow):
         quick_finder_action.triggered.connect(self.show_quick_finder)
         capture_action = QAction("Capture area", menu)
         capture_action.triggered.connect(self.start_capture)
+        capture_text_action = QAction("Capture text…", menu)
+        capture_text_action.triggered.connect(self.start_text_capture)
         full_capture_action = QAction("Capture full monitor", menu)
         full_capture_action.triggered.connect(self.start_full_screen_capture)
         paste_image_action = QAction("Paste image", menu)
@@ -1107,6 +1113,7 @@ class Dashboard(QMainWindow):
         menu.addAction(self.quick_panel_action)
         menu.addAction(quick_finder_action)
         menu.addAction(capture_action)
+        menu.addAction(capture_text_action)
         menu.addAction(full_capture_action)
         menu.addAction(paste_image_action)
         menu.addAction(import_image_action)
@@ -1920,6 +1927,9 @@ class Dashboard(QMainWindow):
                 window.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, without_activation)
         self._save_capture(image, instant=True, game=game)
 
+    def start_text_capture(self, _checked: bool = False) -> None:
+        self.capture_text.start()
+
     def start_capture(self, _checked: bool = False) -> None:
         if self._quitting or self._card_pack_dialog is not None:
             return
@@ -1968,6 +1978,9 @@ class Dashboard(QMainWindow):
             self.settings.value("capture/action", CaptureAction.SAVE_AND_PIN.value)
         )
         if instant:
+            action = CaptureAction.SAVE_ONLY
+        capture_text = self.capture_text.pending and not instant
+        if capture_text:
             action = CaptureAction.SAVE_ONLY
         if action is CaptureAction.SAVE_ONLY:
             pin_capture = False
@@ -2026,7 +2039,7 @@ class Dashboard(QMainWindow):
             DEFAULT_KEEP_PANEL_HIDDEN,
             type=bool,
         )
-        if keep_hidden or instant:
+        if keep_hidden or instant or capture_text:
             self.quick_panel.capture_finished(restore=False)
             self.hide()
         elif not self.quick_panel.capture_finished(restore=True):
@@ -2045,6 +2058,8 @@ class Dashboard(QMainWindow):
                 QSystemTrayIcon.MessageIcon.Information,
                 3500,
             )
+        if capture_text:
+            self.capture_text.review(card)
 
     def _review_capture(self, image: QImage) -> bool | None:
         self.show_panel()
@@ -2076,6 +2091,7 @@ class Dashboard(QMainWindow):
         return None
 
     def _capture_cancelled(self) -> None:
+        self.capture_text.cancel()
         self._capture_in_progress = False
         self.capture_overlay = None
         if self._quitting:
@@ -2088,6 +2104,7 @@ class Dashboard(QMainWindow):
             self.hide()
 
     def _capture_failed(self, message: str) -> None:
+        self.capture_text.cancel()
         self.diagnostic_history.record(IssueKind.CAPTURE)
         self._capture_in_progress = False
         self.capture_overlay = None
@@ -3268,7 +3285,7 @@ class Dashboard(QMainWindow):
         self.statusBar().showMessage("Extracted text copied to clipboard", 2500)
 
     def _extract_image_text(self, card: Card, *, preview_image: bool = False) -> None:
-        if self._quitting:
+        if self._quitting or self._capture_in_progress:
             return
         if card.kind is not CardKind.IMAGE or not Path(card.image_path).is_file():
             QMessageBox.warning(
@@ -3814,6 +3831,7 @@ class Dashboard(QMainWindow):
         self.shutdown_controller.request()
 
     def _stop_deferred_work(self) -> None:
+        self.capture_text.cancel()
         for timer in self._startup_timers:
             timer.stop()
         self._capture_timer.stop()
