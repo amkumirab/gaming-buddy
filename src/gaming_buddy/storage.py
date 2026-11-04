@@ -498,18 +498,18 @@ class CardStore:
         content: str,
         tags: Sequence[str] | None = None,
     ) -> bool:
-        cursor = self._connection.execute(
-            """
-            UPDATE cards
-            SET title = ?, game = ?, content = ?, updated_at = ?
-            WHERE id = ? AND deleted_at = ''
-            """,
-            (title.strip(), game.strip(), content, utc_now(), card_id),
-        )
-        if cursor.rowcount > 0 and tags is not None:
-            self._replace_tags(card_id, tags)
-        self._connection.commit()
-        return cursor.rowcount > 0
+        with self._connection:
+            cursor = self._connection.execute(
+                """
+                UPDATE cards
+                SET title = ?, game = ?, content = ?, updated_at = ?
+                WHERE id = ? AND deleted_at = ''
+                """,
+                (title.strip(), game.strip(), content, utc_now(), card_id),
+            )
+            if cursor.rowcount > 0 and tags is not None:
+                self._replace_tags(card_id, tags)
+            return cursor.rowcount > 0
 
     def save_workspace_preset(
         self,
