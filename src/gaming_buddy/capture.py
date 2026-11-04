@@ -130,21 +130,23 @@ def grab_virtual_desktop() -> DesktopSnapshot:
     if not screens:
         raise RuntimeError("No display is available")
 
-    virtual = screens[0].geometry()
-    for screen in screens[1:]:
-        virtual = virtual.united(screen.geometry())
+    captures: list[ScreenCapture] = []
+    for screen in screens:
+        geometry = QRect(screen.geometry())
+        if geometry.isEmpty():
+            raise RuntimeError("The display layout changed. Try capturing again.")
+        captures.append(ScreenCapture(geometry, grab_monitor(screen)))
+    virtual = QRect(captures[0].logical_geometry)
+    for captured in captures[1:]:
+        virtual = virtual.united(captured.logical_geometry)
 
     preview = QImage(virtual.size(), QImage.Format.Format_RGBA8888)
     preview.fill(Qt.GlobalColor.black)
     painter = QPainter(preview)
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-    captures: list[ScreenCapture] = []
-
-    for screen in screens:
-        native_image = screen.grabWindow(0).toImage().convertToFormat(QImage.Format.Format_RGBA8888)
-        native_image.setDevicePixelRatio(1.0)
-        geometry = screen.geometry()
-        captures.append(ScreenCapture(QRect(geometry), native_image))
+    for captured in captures:
+        geometry = captured.logical_geometry
+        native_image = captured.image
         preview_target = QRect(geometry.topLeft() - virtual.topLeft(), geometry.size())
         painter.drawImage(QRectF(preview_target), native_image, QRectF(native_image.rect()))
 
