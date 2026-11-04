@@ -76,7 +76,7 @@ profiles and saved layouts keep each game's cards organized.
 - Restore backups by safely merging cards and skipping exact duplicates
 - Restore pinned cards, positions, sizes, opacity, and collapsed state after restarting
 - Temporarily show or hide all saved pins without deleting them
-- Keep restored pins visible when monitors or resolutions change
+- Fit pin geometry to available screens when restoring a workspace
 - Persist everything locally in SQLite
 - Configurable global shortcuts and a system tray menu
 - Optional compact quick panel for Capture, Quick note, and Find with a shared note draft
@@ -112,7 +112,8 @@ After an unexpected exit, the next launch recovers the startup lock automaticall
 | `Ctrl+Shift+Right` | Show the next pinned card |
 | `Ctrl+Shift+Up` | Leave single-pin view and restore the workspace |
 
-Choose **Keyboard shortcuts…** in the control panel or tray menu to replace any default.
+Open **Workspace > Settings… > Shortcuts**, or **Keyboard shortcuts…** in the tray,
+to replace any default.
 Changes are saved locally and take effect immediately. Gaming Buddy prevents duplicate,
 empty, and modifier-free shortcuts.
 
@@ -134,6 +135,11 @@ Existing users are not shown the walkthrough automatically after upgrading; open
 to try it. **Guide…** opens the reference overview, including the Windows sign-in option.
 The instructions reflect your current shortcut bindings. If capture settings keep the
 panel hidden, use your full-panel shortcut to return and continue.
+
+The full panel can be resized for shorter workspaces. Use the tab scrollbars to reach
+controls below the visible area; hide the Library's **Preview** dock when you need more
+room for cards. The themed Capture, Workspace and Library tabs have been checked in a
+430×640 logical-pixel window with that dock hidden.
 
 ## Compact quick panel
 
@@ -161,6 +167,8 @@ The quick panel remembers its position locally and is brought back onto an avail
 screen when reopened. It stays closed during capture, application-modal dialogs,
 card-pack import, and shutdown. Entering focus mode also hides it. Borderless Windowed
 remains the recommended game display mode; this is a normal desktop overlay.
+
+## Full-monitor capture
 
 Full-monitor capture always saves a lossless PNG to the current game profile without
 opening review or creating a new pin. Choose the primary monitor, the monitor under
@@ -275,6 +283,7 @@ fresh tested Actions installer and lists the desktop checks that remain pending.
    a screen edge to snap it into place, then right-click it and choose **Lock pin position**.
 7. Double-click a pin header or use its **−** button to collapse it into a compact title bar.
    Use **Collapse all** and **Expand all** to manage the whole workspace at once.
+   A collapsed pin keeps its saved header position and expanded size after restarting.
 8. Right-click an image card or pin and choose **Extract text…**. Select an installed
    language or use the automatic option, review the result, and save it with the card.
    To capture and review in one operation, use **Capture text…** in a Capture arrow menu
@@ -345,15 +354,17 @@ fresh tested Actions installer and lists the desktop checks that remain pending.
 23. Choose **Layouts…** to save the current pins, positions, sizes, visibility, opacity,
     collapsed state, and lock state as a named layout for the current game. Applying a layout
     reuses the existing cards, and the active layout returns with that game profile.
-24. Choose **Backup workspace…** to save a portable ZIP. Use **Restore backup…** to inspect
-    and merge cards, images, settings, and named layouts without deleting the current library.
-25. Choose **Updates** in the panel or **Check for updates…** in the tray. When a newer
+24. Choose **Backup…** or **Restore…** in Workspace, or **Backup workspace…** and
+    **Restore backup…** in the tray, to save or inspect a portable ZIP. Restore can
+    merge cards, images, settings, and named layouts without deleting the current library.
+25. Click the version button in the full panel header or **Check for updates…** in the tray. When a newer
     GitHub Release is available, review its notes and choose **Download and install**. Gaming
     Buddy verifies the published SHA-256 checksum and asks again before starting the Installer.
 26. Toggle **Check for updates automatically** in the tray. Automatic checks run no more than
     once per day, never download in the background, and only show a notification when a newer
     release exists.
-27. Open **Getting started…** from the panel or tray whenever you want the quick guide again.
+27. Open **Help** in Workspace or **Getting started…** in the tray to resume the walkthrough.
+    Choose **Guide…** inside it for the reference overview.
 28. Toggle **Launch at Windows sign-in** from the tray to keep global shortcuts ready after
     signing in.
 29. Open **Settings > Troubleshooting** and choose **Run checks** to check note-folder
@@ -369,6 +380,11 @@ Captured images and the SQLite database are stored under:
 %LOCALAPPDATA%\GamingBuddy
 ```
 
+Card text, title, game and tags are saved together. If an edit cannot be saved, the
+editor keeps the entered fields available for retry or copying before cancelling;
+the failed transaction leaves the stored card unchanged. If a display cannot supply
+a valid image, region capture reports an error instead of saving an incomplete PNG.
+
 ## Project structure
 
 ```text
@@ -379,6 +395,8 @@ gaming-buddy/
 │   ├── dashboard.py    # Main control panel
 │   ├── card_preview.py # Library image, note, and metadata preview panel
 │   ├── capture.py      # Screen-region capture
+│   ├── capture_button.py # Shared area/text capture menu control
+│   ├── capture_text_controller.py # Capture-to-text-review coordination
 │   ├── capture_workflow.py # Capture behavior and delay preferences
 │   ├── card_editor.py  # Saved-card editor
 │   ├── markdown_view.py # Safe shared Markdown note preview
@@ -395,6 +413,8 @@ gaming-buddy/
 │   ├── profiles.py     # Active-game detection and profile mappings
 │   ├── profile_dialog.py # Profile manager
 │   ├── quick_finder.py # Keyboard-first saved-card search overlay
+│   ├── quick_panel.py  # Compact Capture, Quick note, and Find window
+│   ├── quick_panel_controller.py # Shared drafts, profiles and panel navigation
 │   ├── note_drafts.py  # Crash-safe local quick-note draft storage
 │   ├── text_recognition.py # Local Windows screenshot text recognition
 │   ├── text_recognition_dialog.py # Recognition review and language controls
@@ -407,7 +427,10 @@ gaming-buddy/
 │   ├── settings_dialog.py # Central application settings and About panel
 │   ├── diagnostics.py   # Local checks and fixed, session-only error categories
 │   ├── troubleshooting.py # Diagnostic report preview and explicit clipboard copy
-│   ├── onboarding.py   # First-run setup guide
+│   ├── onboarding.py   # Reference overview and startup preference
+│   ├── walkthrough.py  # Resumable first-run progress and step cards
+│   ├── walkthrough_controller.py # Real note, pin, capture and panel practice
+│   ├── shutdown.py     # Responsive background-task shutdown coordination
 │   ├── updates.py      # Release checks, secure downloads, and version comparison
 │   ├── update_dialog.py # Release notes and update consent
 │   ├── startup.py      # Per-user Windows startup setting
@@ -416,9 +439,9 @@ gaming-buddy/
 │   └── storage.py      # Local SQLite persistence
 ├── tests/              # Automated behavior, storage, and packaging tests
 ├── packaging/          # Windows executable and installer configuration
-├── scripts/            # Release metadata validation
+├── scripts/            # Version checks, installer builds and acceptance-report preparation
 ├── .github/workflows/  # Test and tagged-release automation
-└── docs/               # Project preview assets
+└── docs/               # Preview assets, feature specifications, audits and release acceptance
 ```
 
 ## Privacy and storage
@@ -437,8 +460,9 @@ gaming-buddy/
 - Recent quick-finder searches stay in the current Windows account settings.
 - Screenshot text recognition runs locally through installed Windows language packs; images
   are not uploaded for recognition.
-- The prototype does not require an account or cloud connection.
-- Captures are created only after the user activates the capture shortcut.
+- Gaming Buddy does not require an account or cloud connection.
+- Captures are created only after the user chooses a capture action through a shortcut,
+  panel control, or tray menu.
 - Delayed captures wait locally before showing the selection overlay; they do not record the
   screen during the countdown.
 - Imported images are copied into the local capture library only after confirmation.
@@ -475,14 +499,14 @@ The [2026-11-04 readiness audit](docs/audits/2026-11-04-production-readiness.md)
 records verified fixes, architecture, source-test evidence and the remaining manual
 Windows/game checks. A green source test suite does not establish game compatibility.
 
-The MVP uses ordinary top-level Windows windows. It does not inject code, read game
+Gaming Buddy uses ordinary top-level Windows windows. It does not inject code, read game
 memory, automate input, or bypass anti-cheat software. Borderless-windowed mode gives
 the most reliable overlay experience. Some exclusive-fullscreen games may hide normal
 desktop overlays. Always follow the rules of the game you are playing.
 
 ## Current scope and roadmap
 
-This release intentionally focuses on the core overlay and notebook experience. Planned
+Development currently focuses on the core overlay and notebook experience. Planned
 improvements include spoiler-safe layered hints, optional web lookup, and better
 multi-monitor support.
 
@@ -517,7 +541,7 @@ python -m pip install -e ".[dev,packaging]"
 
 The script validates synchronized version metadata before building. It requires Inno Setup 6.
 Pass `-SkipApplicationBuild` when the PyInstaller bundle has already been created. Silent
-uninstall keeps user data; administrators can pass `/PURGEUSERDATA` to the uninstaller only
+uninstall keeps user data; `/PURGEUSERDATA` can be passed to the uninstaller only
 when permanent workspace removal is intended.
 
 Pushing a tag that exactly matches the project version, such as `v0.1.0`, runs the

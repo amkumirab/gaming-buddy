@@ -4,8 +4,9 @@ Date: 2026-11-04. Version: 0.1.0. Baseline commit:
 `fb70c6aca9985a16f7918a92694ee5d2d1708de6`.
 
 The working tree was clean at the start. This audit preserves the application,
-dependencies, licensing model and release workflow. Changes are local; no branch,
-tag, release or GitHub setting was published or changed for this audit.
+dependencies, licensing model and release workflow. Verification was completed locally
+before a separate delivery request authorized pushing the changes. No tag, release or
+GitHub setting was created or changed by this audit.
 
 ## Architecture and feature inventory
 
