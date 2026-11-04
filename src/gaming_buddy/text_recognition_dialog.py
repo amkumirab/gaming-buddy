@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from gaming_buddy.text_recognition import (
     RecognitionLanguage,
     RecognitionResult,
+    TextRecognitionError,
     recognize_text,
 )
 
@@ -28,22 +29,36 @@ from gaming_buddy.text_recognition import (
 class _RecognitionWorker(QObject):
     succeeded = Signal(object)
     failed = Signal(str)
+    languages_loaded = Signal(object)
 
     def __init__(
         self,
         image_path: Path,
         language: str,
         recognizer: Callable[[Path, str], RecognitionResult],
+        language_provider: Callable[[], Sequence[RecognitionLanguage]] | None = None,
     ) -> None:
         super().__init__()
         self._image_path = image_path
         self._language = language
         self._recognizer = recognizer
+        self._language_provider = language_provider
 
     @Slot()
     def run(self) -> None:
         try:
-            result = self._recognizer(self._image_path, self._language)
+            language = self._language
+            if self._language_provider is not None:
+                languages = self._language_provider()
+                if not languages:
+                    raise TextRecognitionError(
+                        "Install a Windows language pack with text recognition support, "
+                        "then retry or type the text manually."
+                    )
+                language = next((item.tag for item in languages
+                                 if item.tag.casefold() == language.casefold()), "")
+                self.languages_loaded.emit(languages)
+            result = self._recognizer(self._image_path, language)
         except Exception as exc:  # noqa: BLE001 - worker must always report and stop cleanly
             self.failed.emit(str(exc))
             return
@@ -52,6 +67,8 @@ class _RecognitionWorker(QObject):
 
 class TextRecognitionDialog(QDialog):
     work_finished = Signal()
+    save_requested = Signal()
+    languages_loaded = Signal(object)
 
     def __init__(
         self,
@@ -63,10 +80,16 @@ class TextRecognitionDialog(QDialog):
         *,
         recognizer: Callable[[Path, str], RecognitionResult] = recognize_text,
         auto_start: bool = True,
+        language_provider: Callable[[], Sequence[RecognitionLanguage]] | None = None,
+        confirm_save: bool = False,
+        preview_image: bool = False,
     ) -> None:
         super().__init__(parent)
         self._image_path = image_path
         self._recognizer = recognizer
+        self._language_provider = language_provider
+        self._preferred_language = preferred_language
+        self._confirm_save = confirm_save
         self._thread: QThread | None = None
         self._worker: _RecognitionWorker | None = None
         self._shutting_down = False
@@ -99,10 +122,29 @@ class TextRecognitionDialog(QDialog):
         description.setWordWrap(True)
         layout.addWidget(description)
 
+        self.preview = QLabel()
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview.setAccessibleName("Saved screenshot preview")
+        if preview_image:
+            pixmap = QPixmap(str(image_path))
+            if not pixmap.isNull():
+                self.preview.setPixmap(pixmap.scaled(
+                    520, 140, Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                ))
+                self.preview.setToolTip(
+                    f"{pixmap.width()} × {pixmap.height()} px · Original saved in the Library"
+                )
+                layout.addWidget(self.preview)
+                self.resize(680, 680)
+        self.preview.setVisible(preview_image and not self.preview.pixmap().isNull())
+
         controls = QHBoxLayout()
         language_label = QLabel("Language")
         language_label.setObjectName("muted")
         self.language = QComboBox()
+        self.language.setAccessibleName("Recognition language")
+        language_label.setBuddy(self.language)
         self.language.addItem("Automatic (Windows profile)", "")
         selected_index = 0
         for item in languages:
@@ -120,10 +162,14 @@ class TextRecognitionDialog(QDialog):
 
         self.status = QLabel("Ready")
         self.status.setObjectName("muted")
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
-        self.text = QTextEdit(existing_text)
+        self.text = QTextEdit()
+        self.text.setAcceptRichText(False)
+        self.text.setPlainText(existing_text)
+        self.text.setAccessibleName("Reviewed screenshot text")
         self.text.setPlaceholderText("Recognized text will appear here…")
         layout.addWidget(self.text, 1)
 
@@ -161,6 +207,7 @@ class TextRecognitionDialog(QDialog):
         self.recognize_button.setEnabled(enabled)
         self.language.setEnabled(enabled)
         self.dialog_buttons.setEnabled(enabled)
+        self.text.setReadOnly(not enabled)
 
     @property
     def selected_language(self) -> str:
@@ -176,18 +223,21 @@ class TextRecognitionDialog(QDialog):
         self.recognize_button.setEnabled(False)
         self.language.setEnabled(False)
         self.dialog_buttons.setEnabled(False)
+        self.text.setReadOnly(True)
         self.status.setText("Reading the screenshot…")
 
         thread = QThread(self)
         worker = _RecognitionWorker(
             self._image_path,
-            self.selected_language,
+            self._preferred_language if self._language_provider is not None else self.selected_language,
             self._recognizer,
+            self._language_provider,
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.succeeded.connect(self._recognition_succeeded)
         worker.failed.connect(self._recognition_failed)
+        worker.languages_loaded.connect(self._set_languages)
         worker.succeeded.connect(thread.quit)
         worker.failed.connect(thread.quit)
         thread.finished.connect(worker.deleteLater)
@@ -195,6 +245,17 @@ class TextRecognitionDialog(QDialog):
         self._thread = thread
         self._worker = worker
         thread.start()
+
+    @Slot(object)
+    def _set_languages(self, languages: Sequence[RecognitionLanguage]) -> None:
+        self._language_provider = None
+        self.language.clear()
+        self.language.addItem("Automatic (Windows profile)", "")
+        for item in languages:
+            self.language.addItem(f"{item.display_name} ({item.tag})", item.tag)
+            if item.tag.casefold() == self._preferred_language.casefold():
+                self.language.setCurrentIndex(self.language.count() - 1)
+        self.languages_loaded.emit(languages)
 
     @Slot(object)
     def _recognition_succeeded(self, result: object) -> None:
@@ -260,6 +321,15 @@ class TextRecognitionDialog(QDialog):
     def accept(self) -> None:
         if self._shutting_down or not self.shutdown_ready:
             self.status.setText("Wait for recognition to finish before saving.")
+            return
+        self._auto_start_timer.stop()
+        if self._confirm_save:
+            self.save_requested.emit()
+            return
+        self.confirm_saved()
+
+    def confirm_saved(self) -> None:
+        if self._shutting_down or not self.shutdown_ready:
             return
         self._auto_start_timer.stop()
         super().accept()
