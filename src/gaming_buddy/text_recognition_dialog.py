@@ -224,7 +224,10 @@ class TextRecognitionDialog(QDialog):
         self.language.setEnabled(False)
         self.dialog_buttons.setEnabled(False)
         self.text.setReadOnly(True)
-        self.status.setText("Reading the screenshot…")
+        self.status.setText(
+            "Checking Windows languages…" if self._language_provider is not None
+            else "Reading the screenshot…"
+        )
 
         thread = QThread(self)
         worker = _RecognitionWorker(

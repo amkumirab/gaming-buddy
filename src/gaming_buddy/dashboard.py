@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
@@ -125,7 +125,6 @@ from gaming_buddy.storage import CardStore
 from gaming_buddy.tags import format_tags
 from gaming_buddy.text_recognition import (
     RecognitionLanguage,
-    TextRecognitionError,
     available_languages,
 )
 from gaming_buddy.text_recognition_dialog import TextRecognitionDialog
@@ -176,6 +175,7 @@ class Dashboard(QMainWindow):
         self._quick_finder: QuickFinderDialog | None = None
         self._recognition_languages: list[RecognitionLanguage] | None = None
         self._text_recognition_dialog: TextRecognitionDialog | None = None
+        self._recognition_card_id: int | None = None
         self._card_pack_dialog: CardPackDialog | None = None
         self._library_kind_filter: CardKind | None = None
         self._library_tag_filter = ""
@@ -3267,7 +3267,7 @@ class Dashboard(QMainWindow):
         QApplication.clipboard().setText(text)
         self.statusBar().showMessage("Extracted text copied to clipboard", 2500)
 
-    def _extract_image_text(self, card: Card) -> None:
+    def _extract_image_text(self, card: Card, *, preview_image: bool = False) -> None:
         if self._quitting:
             return
         if card.kind is not CardKind.IMAGE or not Path(card.image_path).is_file():
@@ -3278,58 +3278,54 @@ class Dashboard(QMainWindow):
             )
             return
         existing = self._text_recognition_dialog
-        if existing is not None and existing.isVisible():
+        if existing is not None:
+            existing.show()
             existing.raise_()
             existing.activateWindow()
-            return
-        if self._recognition_languages is None:
-            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            try:
-                self._recognition_languages = available_languages()
-            except TextRecognitionError as exc:
-                QMessageBox.warning(self, "Text recognition unavailable", str(exc))
-                return
-            finally:
-                QApplication.restoreOverrideCursor()
-        if not self._recognition_languages:
-            QMessageBox.warning(
-                self,
-                "Text recognition unavailable",
-                "Install a Windows language pack with text recognition support and try again.",
-            )
             return
 
         dialog = TextRecognitionDialog(
             Path(card.image_path),
             card.content,
-            self._recognition_languages,
+            self._recognition_languages or [],
             str(self.settings.value("recognition/language", "")),
             self,
+            language_provider=available_languages if not self._recognition_languages else None,
+            confirm_save=True,
+            preview_image=preview_image,
         )
-        dialog.accepted.connect(lambda: self._save_extracted_text(card, dialog))
+        dialog.save_requested.connect(self._save_extracted_text)
+        dialog.languages_loaded.connect(self._remember_recognition_languages)
         dialog.finished.connect(self._text_recognition_finished)
+        self._recognition_card_id = card.id
         self._text_recognition_dialog = dialog
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
 
-    def _save_extracted_text(self, card: Card, dialog: TextRecognitionDialog) -> None:
-        if self._quitting:
-            return
-        if card.id is None:
-            return
-        stored = self.store.get(card.id)
-        if stored is None:
-            self.statusBar().showMessage("The selected card is no longer available", 2500)
+    def _remember_recognition_languages(self, languages: Sequence[RecognitionLanguage]) -> None:
+        self._recognition_languages = list(languages)
+
+    def _save_extracted_text(self) -> None:
+        dialog = self._text_recognition_dialog
+        if self._quitting or dialog is None or self._recognition_card_id is None:
             return
         text = dialog.recognized_text
-        if not self.store.update_details(
-            stored.id,
-            title=stored.title,
-            game=stored.game,
-            content=text,
-        ):
-            QMessageBox.warning(self, "Save failed", "The extracted text could not be saved.")
+        try:
+            stored = self.store.get(self._recognition_card_id)
+            if stored is None:
+                dialog.status.setText("The selected card is no longer available. You can copy the text.")
+                return
+            saved = self.store.update_details(
+                stored.id, title=stored.title, game=stored.game, content=text,
+            )
+        except sqlite3.Error:
+            saved = False
+        if not saved:
+            dialog.status.setText(
+                "The text could not be saved. Your corrections are still here; "
+                "check storage access and try again."
+            )
             return
         pin = self.pins.get(stored.id)
         if pin is not None:
@@ -3339,10 +3335,12 @@ class Dashboard(QMainWindow):
         self.refresh_cards()
         message = "Screenshot text saved and searchable" if text else "Screenshot text cleared"
         self.statusBar().showMessage(message, 3000)
+        dialog.confirm_saved()
 
     def _text_recognition_finished(self, _result: int) -> None:
         dialog = self._text_recognition_dialog
         self._text_recognition_dialog = None
+        self._recognition_card_id = None
         if dialog is not None:
             dialog.deleteLater()
 
