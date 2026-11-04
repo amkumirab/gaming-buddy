@@ -34,6 +34,8 @@ def fit_geometry_to_screens(
     requested: QRect,
     screens: list[QRect],
     primary: QRect | None = None,
+    *,
+    minimum_height: int = 110,
 ) -> QRect:
     """Keep a restored pin fully visible after monitor or resolution changes."""
     if not screens:
@@ -49,7 +51,7 @@ def fit_geometry_to_screens(
         target = target_primary
 
     width = min(max(180, requested.width()), target.width())
-    height = min(max(110, requested.height()), target.height())
+    height = min(max(minimum_height, requested.height()), target.height())
     maximum_x = target.x() + target.width() - width
     maximum_y = target.y() + target.height() - height
     x = max(target.x(), min(requested.x(), maximum_x))
@@ -282,17 +284,22 @@ class PinWidget(QWidget):
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setMinimumSize(180, 110)
+        visible_height = self.COLLAPSED_HEIGHT if card.collapsed else card.height
+        minimum_height = self.COLLAPSED_HEIGHT if card.collapsed else 110
+        self.setMinimumSize(180, minimum_height)
         screen_geometries = [screen.availableGeometry() for screen in QGuiApplication.screens()]
         primary_screen = QGuiApplication.primaryScreen()
         primary_geometry = primary_screen.availableGeometry() if primary_screen else None
         geometry = fit_geometry_to_screens(
-            QRect(card.x, card.y, card.width, card.height),
+            QRect(card.x, card.y, card.width, visible_height),
             screen_geometries,
             primary_geometry,
+            minimum_height=minimum_height,
         )
         card.x, card.y = geometry.x(), geometry.y()
-        card.width, card.height = geometry.width(), geometry.height()
+        card.width = geometry.width()
+        if not card.collapsed:
+            card.height = geometry.height()
         self.setGeometry(geometry)
         self.setWindowOpacity(card.opacity)
         self._build_ui()

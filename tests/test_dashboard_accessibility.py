@@ -10,6 +10,7 @@ import gaming_buddy.dashboard as dashboard_module
 from gaming_buddy.dashboard import Dashboard
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.storage import CardStore
+from gaming_buddy.theme import STYLESHEET
 
 
 @pytest.fixture(scope="module")
@@ -70,6 +71,27 @@ def test_dashboard_groups_workflows_into_accessible_tabs(
         assert all(button.accessibleName() for button in buttons)
         assert all(button.toolTip() for button in buttons)
         assert all(not button.icon().isNull() for button in buttons)
+    finally:
+        _close_dashboard(store, dashboard)
+
+
+def test_full_panel_can_fit_a_640_pixel_workspace_without_losing_navigation(
+    application: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, dashboard = _dashboard(tmp_path, monkeypatch)
+    try:
+        dashboard.setStyleSheet(STYLESHEET)
+        dashboard._set_preview_visible(False)
+        dashboard.resize(430, 640)
+        dashboard.show()
+        application.processEvents()
+        assert dashboard.height() == 640
+        for index in range(3):
+            dashboard.main_tabs.setCurrentIndex(index)
+            application.processEvents()
+            assert dashboard.main_tabs.currentWidget().isVisible()
+        assert dashboard.card_list.height() >= 100
+        assert dashboard.shortcut_footer.isVisible()
     finally:
         _close_dashboard(store, dashboard)
 

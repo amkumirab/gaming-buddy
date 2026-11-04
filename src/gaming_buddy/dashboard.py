@@ -230,7 +230,7 @@ class Dashboard(QMainWindow):
         self.undo_timer.timeout.connect(self._hide_undo)
 
         self.setWindowTitle("Gaming Buddy")
-        self.setMinimumSize(430, 730)
+        self.setMinimumSize(430, 560)
         self.resize(830, 900)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setAcceptDrops(True)
@@ -937,7 +937,7 @@ class Dashboard(QMainWindow):
         self.card_list.setAccessibleDescription(
             "Select a card to preview it, or double-click a card to pin it."
         )
-        self.card_list.setMinimumHeight(260)
+        self.card_list.setMinimumHeight(120)
         self.card_list.setAlternatingRowColors(True)
         self.card_list.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
