@@ -4,22 +4,31 @@
   <img src="src/gaming_buddy/assets/app-icon.png" alt="Gaming Buddy logo" width="180">
 </p>
 
-Gaming Buddy is a lightweight Windows overlay for saving notes and pinning cropped
-screenshots without leaving a game. This repository contains the first working prototype.
+Gaming Buddy is a Windows notebook overlay for keeping game clues, build notes, and
+screenshots within reach while you play. Cards stay on your computer and can be opened
+through global shortcuts, the compact panel, or the system tray.
+
+**Development preview · 0.1.0.** There is no public installer release yet.
+[Run from source](#run-from-source) or follow the
+[development installer instructions](docs/windows-release.md#try-a-development-installer).
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-41CD52)
 ![License](https://img.shields.io/badge/license-Proprietary-7c5cff)
 
-![Gaming Buddy MVP](docs/ui-preview.png)
+![Gaming Buddy development build with sample cards](docs/ui-preview.png)
 
-## About the project
+The screenshot shows the running source application with synthetic demo cards.
+It does not establish installation or real-game compatibility.
 
-Gaming Buddy keeps useful game information visible while you play. It provides a compact
-control panel for capturing a clue, saving a short note, and placing movable cards over a
-game window. The prototype is designed for quick interaction and stores its data locally.
+## Features
 
-## Prototype features
+Capture a map or code, keep a Markdown note or checklist beside it, and find the card
+again from inside a game. Capture text adds local OCR with an editable review. Game
+profiles and saved layouts keep each game's cards organized.
+
+<details>
+<summary>Browse implemented features</summary>
 
 - Capture a region at the monitor's native pixel resolution and pin it above the game
 - Instantly capture a full monitor to the library without selection, countdown, or focus changes
@@ -79,6 +88,8 @@ game window. The prototype is designed for quick interaction and stores its data
 - Per-user Windows installer with clean update and uninstall support
 - Check GitHub Releases for updates and install a verified Windows release with permission
 - No code injection and no game-memory access
+
+</details>
 
 ## Shortcuts
 
@@ -459,6 +470,10 @@ gaming-buddy/
 - Saved cards and captured images can be removed by deleting `%LOCALAPPDATA%\GamingBuddy`.
 
 ## Compatibility and fair-play note
+
+The [2026-11-04 readiness audit](docs/audits/2026-11-04-production-readiness.md)
+records verified fixes, architecture, source-test evidence and the remaining manual
+Windows/game checks. A green source test suite does not establish game compatibility.
 
 The MVP uses ordinary top-level Windows windows. It does not inject code, read game
 memory, automate input, or bypass anti-cheat software. Borderless-windowed mode gives

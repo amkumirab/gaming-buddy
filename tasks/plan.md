@@ -531,3 +531,24 @@ preferences. The saved image then opens directly in the existing text-review dia
 - No new installer was built or installed for this feature. Clean Windows without
   Python, actual in-game selection, high-DPI/multi-monitor and screen-reader acceptance
   remain untested. No schema, version, CI or release workflow changes were made.
+
+## Production readiness audit (2026-11-04)
+
+The user requested a practical repository audit and safe high-impact fixes, with no
+push/release/settings changes. Baseline fb70c6a was clean; 514 tests and Ruff passed.
+See docs/audits/2026-11-04-production-readiness.md for the complete architecture,
+inventory, prioritized evidence, changes, verification, release and manual QA matrix.
+
+Reproduced and fixed failed card/tag transaction rollback, editor retry after storage
+errors, incomplete region snapshots, collapsed-pin position restoration and the
+full panel's fixed 730px minimum. Kept the existing architecture, features, dependency
+set, proprietary license and tag-only release workflow. Added nine regressions;
+523 tests pass with process exit zero on Python 3.11 and 3.12, and Ruff passes.
+
+Native themed UI QA covered all tabs at 430x640, updated the README screenshot with
+synthetic data, and sampled 20 review/viewer/editor open-close cycles after warm-up.
+Top-level widget count stayed at 8; the limited resource sample is not a game benchmark
+or proof of long-duration leak freedom. Local artifact identity is recorded under
+ignored build/production-readiness-2026-11-04/artifacts.json. Clean Windows without
+Python, installed-app retention, physical monitor/DPI changes and real games still
+require the existing manual acceptance reports. No publication is authorized.

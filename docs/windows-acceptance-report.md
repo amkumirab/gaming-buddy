@@ -32,6 +32,9 @@ Use synthetic notes and screenshots. Do not attach private desktop content or da
 | Region screenshot saved, pinned, inspected at 100%, reopened after restart | Not tested | |
 | Multiline Markdown note saved, edited, reopened with full content | Not tested | |
 | Pinned checklist toggled and state retained after restart | Not tested | |
+| Collapsed pin near a screen edge keeps its position after restart and expands safely | Not tested | Include a display with negative desktop coordinates. |
+| Panel navigation works on a short workspace and at 100%, 125%, 150%, and 200% scaling | Not tested | Record physical resolution, scaling and available logical geometry. |
+| Monitor unplug/reconnect and resolution changes leave windows reachable | Not tested | Test visible, hidden, locked and click-through pins; cancel and retry an active capture. |
 | Same-build reinstall preserves cards, captures, layouts, shortcuts, settings | Not tested | |
 | Older official version upgraded with representative data preserved | Not tested | Record both versions; use Not applicable for the first official release. |
 | Interactive uninstall with No preserves data and removes program registration | Not tested | Include shortcuts and launch-at-sign-in entry. |

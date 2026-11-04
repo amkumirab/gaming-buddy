@@ -78,3 +78,15 @@
   points, original image retention, one review, cancellation and busy/shutdown guards.
 - [x] Verification: real Windows OCR fixture, native layouts, real-app normal/busy
   shutdown, serial Python 3.11/3.12 suites, Ruff, metadata, wheel and source review.
+
+# Production readiness audit
+
+- [x] Baseline, architecture/feature inventory, packaging/distribution review and
+  reproducible-issue prioritization; preserve local state and existing licensing.
+- [x] Atomic card/tag edits and retryable editor failures; checked with real SQLite
+  constraint failures, database reopen and real Qt editor state/release tests.
+- [x] Reject failed monitor snapshots; keep native/fractional scale and negative coordinates.
+- [x] Preserve compact pin position/expanded size; allow all tabs in a 640px workspace.
+- [x] Updated actual source screenshot, short dialog resource probe, complete audit
+  report/manual checklist, 523 passing tests on both runtimes, Ruff and wheel build.
+- [ ] External acceptance on clean Windows and real games before an official release.
