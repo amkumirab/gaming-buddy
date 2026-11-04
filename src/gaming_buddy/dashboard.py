@@ -3233,21 +3233,38 @@ class Dashboard(QMainWindow):
         pin = self.pins.get(card.id)
         was_visible = pin.isVisible() if pin is not None else False
         if pin is not None:
-            pin.save_now()
+            try:
+                pin.save_now()
+            except sqlite3.Error:
+                QMessageBox.warning(self, "Edit unavailable", "The current pin layout could not be saved. Try again.")
+                return
 
         dialog = CardEditor(card, self)
-        if not dialog.exec():
-            return
-        title, game, content = dialog.values()
-        if not self.store.update_details(
-            card.id,
-            title=title,
-            game=game or "General",
-            content=content,
-            tags=dialog.tags(),
-        ):
-            QMessageBox.warning(self, "Edit failed", "The selected card no longer exists.")
-            return
+        try:
+            while True:
+                if not dialog.exec() or self._quitting:
+                    return
+                title, game, content = dialog.values()
+                try:
+                    saved = self.store.update_details(
+                        card.id, title=title, game=game or "General", content=content,
+                        tags=dialog.tags(),
+                    )
+                except sqlite3.Error:
+                    QMessageBox.warning(
+                        self, "Edit not saved",
+                        "Your changes are still in the editor. Check storage access and retry, "
+                        "or copy your text before cancelling.",
+                    )
+                    continue
+                if saved:
+                    break
+                QMessageBox.warning(
+                    self, "Card unavailable",
+                    "The selected card no longer exists. Copy your changes before cancelling.",
+                )
+        finally:
+            dialog.deleteLater()
 
         updated = self.store.get(card.id)
         if updated is None:
