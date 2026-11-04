@@ -6,14 +6,15 @@ import sys
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QTimer
+from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtGui import QImage
 
 import gaming_buddy.app as app_module
 import gaming_buddy.dashboard as dashboard_module
 import gaming_buddy.updates as update_module
 from gaming_buddy.dashboard import Dashboard
 from gaming_buddy.paths import ensure_data_dirs
-from gaming_buddy.text_recognition import RecognitionResult
+from gaming_buddy.text_recognition import RecognitionLanguage, RecognitionResult
 from gaming_buddy.text_recognition_dialog import TextRecognitionDialog
 from gaming_buddy.updates import ReleaseAsset, ReleaseInfo, UpdateCancelled, UpdateError
 
@@ -56,6 +57,22 @@ update_module.fetch_latest_release = blocked_check
 update_module.download_release = blocked_download
 
 
+def capture_text_languages():
+    if mode == "capture_text_busy":
+        started.set()
+        if not release_worker.wait(5):
+            raise TimeoutError("Runtime test did not release language discovery")
+    return [RecognitionLanguage("en-US", "English")]
+
+
+if mode.startswith("capture_text"):
+    dashboard_module.available_languages = capture_text_languages
+    dashboard_module.TextRecognitionDialog = lambda *args, **kwargs: TextRecognitionDialog(
+        *args, **kwargs,
+        recognizer=lambda _, language: RecognitionResult("Code 0451", language),
+    )
+
+
 class ObservedDashboard(Dashboard):
     def __init__(self, *args):
         super().__init__(*args)
@@ -67,6 +84,23 @@ class ObservedDashboard(Dashboard):
         print(
             "READY" if self.shortcut_status() and self.tray.isVisible() else "NOT_READY", flush=True
         )
+        if mode.startswith("capture_text"):
+            self.settings.setValue("capture/action", "review")
+            self.settings.setValue("capture/notifications", False)
+            self.show_quick_panel()
+            self.quick_panel.panel.capture_button.text_action.trigger()
+            self._capture_timer.stop()
+            image = QImage(320, 180, QImage.Format.Format_RGB32)
+            image.fill(Qt.GlobalColor.blue)
+            self._save_capture(image)
+            assert self._text_recognition_dialog.isVisible()
+            print("CAPTURE_TEXT_READY", flush=True)
+            if mode == "capture_text_busy":
+                self.note_input.setPlainText("Capture text draft")
+                self.watch_busy_exit()
+            else:
+                self._text_recognition_dialog.work_finished.connect(self.save_capture_text)
+            return
         if mode in ("walkthrough", "walkthrough_resume"):
             assert self.walkthrough_panel.isVisible()
             if mode == "walkthrough":
@@ -109,10 +143,22 @@ class ObservedDashboard(Dashboard):
                     recognizer=blocked_recognition, auto_start=False,
                 )
                 self._text_recognition_dialog.start_recognition()
-            self._busy_timer = QTimer(self)
-            self._busy_timer.setInterval(10)
-            self._busy_timer.timeout.connect(self.quit_when_busy)
-            self._busy_timer.start()
+            self.watch_busy_exit()
+
+    def save_capture_text(self):
+        dialog = self._text_recognition_dialog
+        assert dialog.shutdown_ready
+        dialog.text.setPlainText("Reviewed code\n0451")
+        dialog.accept()
+        assert self._text_recognition_dialog is None
+        print("CAPTURE_TEXT_SAVED", flush=True)
+        QTimer.singleShot(100, self.quit_app)
+
+    def watch_busy_exit(self):
+        self._busy_timer = QTimer(self)
+        self._busy_timer.setInterval(10)
+        self._busy_timer.timeout.connect(self.quit_when_busy)
+        self._busy_timer.start()
 
     def quit_when_busy(self):
         if not started.is_set():
@@ -124,7 +170,11 @@ class ObservedDashboard(Dashboard):
 
     def release_from_gui(self):
         assert self._quitting and not self._really_quit
-        assert self.store.list() == []
+        cards = self.store.list()
+        if mode == "capture_text_busy":
+            assert len(cards) == 1 and cards[0].content == ""
+        else:
+            assert cards == []
         print("RESPONSIVE", flush=True)
         release_worker.set()
 

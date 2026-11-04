@@ -485,3 +485,49 @@ The reference guide and startup preference remain available through Guide.
   version, release or CI change. No unresolved finding from the scoped source review.
 - Installed-app, clean-machine/no-Python, real-game, high-DPI/multi-monitor and
   screen-reader acceptance have not been run. Publication is a separate delivery step.
+
+## Capture and review screenshot text (2026-11-04)
+
+Implemented the next roadmap increment; see docs/specs/capture-text-workflow.md.
+Capture text is available in the shared split capture button in both panels and in
+the tray. Its small controller carries one pending intent through the existing area
+capture path, preserving native PNG pixels and creating one image card. It bypasses
+pinning and the general capture-review prompt for this operation without changing
+preferences. The saved image then opens directly in the existing text-review dialog.
+
+- Language discovery now shares the recognition worker, with cached installed-language
+  choices. Discovery errors, missing packs and empty results leave manual review/retry
+  available. Editing is paused during background work to prevent a result replacing
+  corrections typed while it was still running. No backend, network or dependency added.
+- Review saves require database confirmation before the dialog closes. Failed writes
+  and deleted cards keep corrected text available; current title/game metadata and the
+  original image remain intact. Plain-text editing preserves literal markup. Saving
+  makes the same card searchable in the library and Quick Finder; Cancel does not save.
+- Selection cancellation, capture failure and shutdown reset pending intent. Existing
+  review windows are reused; capture/import/modal/shutdown guards prevent overlapping
+  work. Existing full-monitor and ordinary area-capture regression tests remain enabled.
+- The split control's real arrow/menu and keyboard selection were exercised. Native
+  stylesheet QA inspected the full panel at 430x730, Quick Panel at 320px, and image/text
+  review at 680px and 560px. The full note draft remains shared and untouched.
+- Real Windows OCR on a generated 960x300 English fixture recognized the code 0451 and
+  the eastern-gate clue. Available packs were en-GB, en-US and it-IT; en-US was used.
+  This is a synthetic image check, not a real-game or comparative accuracy benchmark.
+  Evidence and screenshots remain under ignored build/capture-text-visual-qa.
+- Real-app subprocess cases cover a complete source capture-to-reviewed-text save and
+  Quit while language discovery is blocked. Both exit zero; the busy case verifies a
+  responsive event loop, retained original image, preserved draft and no automatic text
+  save. External recognition is controlled in these repeatable lifecycle tests.
+- Scoped review covered state transitions, single-card updates, Qt ownership and worker
+  draining, plain-text rendering, ordinary-capture compatibility and theme/layout. The
+  hidden preview label was explicitly parented to its review dialog, with a failing
+  ownership regression first. No native process crash was observed in this increment.
+- Final serial source suites: Python 3.12.10/PySide6 6.12.0, 514 passed in 68.23s;
+  Python 3.11.9, 514 passed in 63.00s. Both complete processes exited zero. Ruff passed
+  and the four version metadata files remain synchronized at 0.1.0.
+- The standard isolated wheel build succeeded, 889950 bytes, SHA-256:
+  e4dca364f6fbdd426635ad23948d6fbee692d0bea872967a254253c9733696ad.
+- Work is split into responsive review, safe persistence, capture entry points and
+  runtime verification/documentation commits. Publication is a separate delivery step.
+- No new installer was built or installed for this feature. Clean Windows without
+  Python, actual in-game selection, high-DPI/multi-monitor and screen-reader acceptance
+  remain untested. No schema, version, CI or release workflow changes were made.

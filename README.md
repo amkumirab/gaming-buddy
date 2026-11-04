@@ -39,6 +39,7 @@ game window. The prototype is designed for quick interaction and stores its data
 - Collapse pins into compact title bars and expand them when needed
 - Open screenshots at full resolution with Fit, 100%, and zoom controls
 - Extract text from screenshots locally, review it, and save it with the image card
+- Capture a clue and open its text review directly from the Capture menu or tray
 - Adjust overlay opacity
 - Switch pins into click-through mode
 - Enter a distraction-free focus mode with unified temporary pin opacity
@@ -137,7 +138,9 @@ panel's draft and existing local autosave. Switching panels, closing the quick p
 or pressing Escape keeps that draft. A failed save keeps the text available for retry;
 successful saves clear both editors. Enter in the editor inserts a newline.
 
-Capture uses the existing area-capture settings. Both area and full-monitor captures
+Clicking Capture uses the existing area-capture settings. Its arrow menu also offers
+**Capture text…**, which saves the original and opens an editable text review.
+Both area and full-monitor captures
 hide the quick panel before grabbing the screen. Cancelling an area capture restores
 the originating panel. Successful captures obey **Keep panel hidden**; full-monitor
 capture always leaves panels hidden. Capture failures return to the full panel for
@@ -160,6 +163,25 @@ selected monitor is disconnected, no other display is captured automatically. Ch
 another monitor in Settings before retrying. Monitor selection is device-specific and
 is not included in portable backups. When upgrading an existing shortcut setup, a free
 alternative is assigned if `Ctrl+Shift+D` is already used by another action.
+
+## Capture text
+
+Open the arrow beside **Capture area** in the full panel or **Capture** in Quick Panel,
+then choose **Capture text…**. The tray menu provides the same action. Select a region
+as usual; this action keeps the configured capture delay, saves a lossless PNG without
+pinning it, and opens a review with a preview of the original image.
+
+Windows language discovery and recognition run in the background. When recognition
+finishes, correct the text and choose **Save** to attach it to the same screenshot card.
+Use Quick Finder to search for a code or phrase from that text. **Copy text** copies the
+reviewed result; **Cancel** keeps the original image and leaves its saved text unchanged.
+The regular capture action, shortcuts and capture preferences retain their behavior.
+
+If Windows cannot recognize the image or has no suitable language pack, the review
+shows an error and keeps the screenshot. Retry, choose another installed language, or
+enter the text manually. A storage error keeps your corrections open for another save
+attempt. Recognition never saves text automatically. A second Capture text request
+brings the current review forward; finish or close it before capturing another clue.
 
 ## Run from source
 
@@ -244,6 +266,8 @@ fresh tested Actions installer and lists the desktop checks that remain pending.
    Use **Collapse all** and **Expand all** to manage the whole workspace at once.
 8. Right-click an image card or pin and choose **Extract text…**. Select an installed
    language or use the automatic option, review the result, and save it with the card.
+   To capture and review in one operation, use **Capture text…** in a Capture arrow menu
+   or the tray. The original remains in the Library even if you cancel the text review.
 9. Double-click a pinned image to inspect the lossless original at full resolution.
 10. Use **Hide all pins** to clear the screen without losing the saved workspace.
 11. Enable **Click-through pins** so mouse input goes to the game.

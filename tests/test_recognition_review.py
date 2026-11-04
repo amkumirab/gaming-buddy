@@ -28,6 +28,7 @@ def test_review_waits_for_save_confirmation_and_keeps_literal_text(qt_applicatio
     dialog.save_requested.connect(lambda: requests.append(dialog.recognized_text))
     dialog.show()
     try:
+        assert dialog.preview.parentWidget() is dialog
         dialog.accept()
         assert dialog.isVisible()
         assert requests == ["<b>CODE</b>\n0451"]

@@ -69,3 +69,12 @@
   behavior, reference guide, failed writes, deleted notes, busy/modal and shutdown guards.
 - [x] Verification: real-app restart/exit, native small-window layout, full serial
   Python 3.11/3.12 suites, Ruff, metadata, wheel packaging and scoped code review.
+
+# Capture and review screenshot text
+
+- [x] Review: background language discovery, literal plain text, original-image preview,
+  explicit save confirmation and recoverable storage errors with focused tests.
+- [x] Capture flow: shared split capture button and controller, full/quick/tray entry
+  points, original image retention, one review, cancellation and busy/shutdown guards.
+- [x] Verification: real Windows OCR fixture, native layouts, real-app normal/busy
+  shutdown, serial Python 3.11/3.12 suites, Ruff, metadata, wheel and source review.

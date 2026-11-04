@@ -107,3 +107,26 @@ def test_real_app_walkthrough_resumes_saved_note_and_exits_cleanly(tmp_path):
         assert len(cards) == 1
         assert cards[0].content == "My first clue\n\nKeep this note"
         assert cards[0].pinned
+
+
+@pytest.mark.parametrize("busy", [False, True])
+def test_real_capture_text_review_and_busy_shutdown_keep_original_image(tmp_path, busy):
+    script = Path(__file__).parent / "helpers" / "app_lifecycle.py"
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+    mode = "capture_text_busy" if busy else "capture_text"
+    result = subprocess.run(
+        [sys.executable, "-X", "faulthandler", "-u", str(script), str(tmp_path), mode],
+        capture_output=True, text=True, env=environment, timeout=20, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "CAPTURE_TEXT_READY" in result.stdout
+    assert ("WAITING" in result.stdout) if busy else ("CAPTURE_TEXT_SAVED" in result.stdout)
+    if busy:
+        assert "RESPONSIVE" in result.stdout
+        assert NoteDraftStore(tmp_path / "data/drafts/quick-note.json").load().text == "Capture text draft"
+    with CardStore(tmp_path / "data/gaming-buddy.sqlite3") as store:
+        cards = store.list()
+        assert len(cards) == 1 and Path(cards[0].image_path).is_file()
+        assert cards[0].content == ("" if busy else "Reviewed code\n0451")
+        assert not cards[0].pinned

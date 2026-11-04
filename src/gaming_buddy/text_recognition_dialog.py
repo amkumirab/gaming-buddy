@@ -117,12 +117,13 @@ class TextRecognitionDialog(QDialog):
         description = QLabel(
             "Recognition runs locally with Windows language packs. Review and correct "
             "the result before saving it to the card."
+            + (" The original image is already in the Library; Cancel keeps it." if preview_image else "")
         )
         description.setObjectName("muted")
         description.setWordWrap(True)
         layout.addWidget(description)
 
-        self.preview = QLabel()
+        self.preview = QLabel(self)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setAccessibleName("Saved screenshot preview")
         if preview_image:
