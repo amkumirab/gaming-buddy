@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Self
 
+from gaming_buddy.hint_cards import HintContent
 from gaming_buddy.library_sort import LibrarySort, normalize_library_sort
 from gaming_buddy.models import Card, CardKind, utc_now
 from gaming_buddy.tags import normalize_tags
@@ -144,7 +145,47 @@ class CardStore:
             ON cards(deleted_at DESC)
             """
         )
+        self._connection.execute(
+            """CREATE TABLE IF NOT EXISTS card_hints (
+                card_id INTEGER PRIMARY KEY REFERENCES cards(id) ON DELETE CASCADE,
+                subtle TEXT NOT NULL, guidance TEXT NOT NULL, solution TEXT NOT NULL,
+                revealed INTEGER NOT NULL DEFAULT 0 CHECK(revealed BETWEEN 0 AND 3)
+            )"""
+        )
         self._connection.commit()
+
+    def set_hint_progress(self, card_id: int, expected: HintContent, progress: int) -> bool:
+        if type(progress) is not int or progress not in (0, expected.revealed + 1) or not 0 <= progress <= 3:
+            return False
+        with self._connection:
+            cursor = self._connection.execute(
+                """UPDATE card_hints SET revealed = ?
+                   WHERE card_id = ? AND subtle = ? AND guidance = ? AND solution = ?
+                   AND revealed = ? AND EXISTS (
+                       SELECT 1 FROM cards WHERE id = card_id AND deleted_at = '')""",
+                (progress, card_id, *expected.steps, expected.revealed),
+            )
+            if cursor.rowcount:
+                self._connection.execute("UPDATE cards SET updated_at = ? WHERE id = ?", (utc_now(), card_id))
+            return cursor.rowcount > 0
+
+    def update_hint_details(self, card_id: int, *, title: str, game: str,
+                            tags: Sequence[str], hints: HintContent) -> bool:
+        with self._connection:
+            stored = self.get(card_id)
+            if stored is None or stored.hints is None:
+                return False
+            progress = stored.hints.revealed if stored.hints.steps == hints.steps else 0
+            self._connection.execute(
+                "UPDATE cards SET title = ?, game = ?, updated_at = ? WHERE id = ?",
+                (title.strip(), game.strip(), utc_now(), card_id),
+            )
+            self._replace_tags(card_id, tags)
+            self._connection.execute(
+                "UPDATE card_hints SET subtle = ?, guidance = ?, solution = ?, revealed = ? WHERE card_id = ?",
+                (*hints.steps, progress, card_id),
+            )
+            return True
 
     def add(self, card: Card) -> Card:
         return self.add_many([card])[0]
@@ -155,6 +196,8 @@ class CardStore:
             return [self._insert_card(card) for card in cards]
 
     def _insert_card(self, card: Card) -> Card:
+        if card.hints is not None and (card.kind is not CardKind.NOTE or card.content):
+            raise ValueError("Hint cards must use structured stages and empty ordinary content.")
         card.with_timestamps()
         cursor = self._connection.execute(
             """
@@ -186,6 +229,11 @@ class CardStore:
         card.id = int(cursor.lastrowid)
         card.tags = normalize_tags(card.tags)
         self._replace_tags(card.id, card.tags)
+        if card.hints is not None:
+            self._connection.execute(
+                "INSERT INTO card_hints VALUES (?, ?, ?, ?, ?)",
+                (card.id, *card.hints.steps, card.hints.revealed),
+            )
         return card
 
     def list(
@@ -210,7 +258,8 @@ class CardStore:
             clauses.append(
                 """
                 (title LIKE ? COLLATE NOCASE
-                 OR content LIKE ? COLLATE NOCASE
+                 OR (content LIKE ? COLLATE NOCASE AND NOT EXISTS (
+                     SELECT 1 FROM card_hints WHERE card_id = cards.id))
                  OR game LIKE ? COLLATE NOCASE
                  OR EXISTS (
                      SELECT 1 FROM card_tags
@@ -253,13 +302,13 @@ class CardStore:
         row = self._connection.execute(
             "SELECT * FROM cards WHERE id = ? AND deleted_at = ''", (card_id,)
         ).fetchone()
-        return self._row_to_card(row, self._tags_for_card(int(row["id"]))) if row else None
+        return self._cards_from_rows([row])[0] if row else None
 
     def get_deleted(self, card_id: int) -> Card | None:
         row = self._connection.execute(
             "SELECT * FROM cards WHERE id = ? AND deleted_at != ''", (card_id,)
         ).fetchone()
-        return self._row_to_card(row, self._tags_for_card(int(row["id"]))) if row else None
+        return self._cards_from_rows([row])[0] if row else None
 
     def list_deleted(self, query: str | None = None) -> list[Card]:
         parameters: list[object] = []
@@ -268,7 +317,8 @@ class CardStore:
             pattern = f"%{query.strip()}%"
             search = """
                 AND (title LIKE ? COLLATE NOCASE
-                     OR content LIKE ? COLLATE NOCASE
+                     OR (content LIKE ? COLLATE NOCASE AND NOT EXISTS (
+                         SELECT 1 FROM card_hints WHERE card_id = cards.id))
                      OR game LIKE ? COLLATE NOCASE
                      OR EXISTS (
                          SELECT 1 FROM card_tags
@@ -484,7 +534,8 @@ class CardStore:
         with self._connection:
             cursor = self._connection.execute(
                 "UPDATE cards SET content = ?, updated_at = ? "
-                "WHERE id = ? AND kind = 'note' AND deleted_at = '' AND content = ?",
+                "WHERE id = ? AND kind = 'note' AND deleted_at = '' AND content = ? "
+                "AND NOT EXISTS (SELECT 1 FROM card_hints WHERE card_id = cards.id)",
                 (content, utc_now(), card_id, expected),
             )
         return cursor.rowcount > 0
@@ -498,6 +549,10 @@ class CardStore:
         content: str,
         tags: Sequence[str] | None = None,
     ) -> bool:
+        if content and self._connection.execute(
+            "SELECT 1 FROM card_hints WHERE card_id = ?", (card_id,),
+        ).fetchone():
+            raise ValueError("Edit hint stages using the hint editor.")
         with self._connection:
             cursor = self._connection.execute(
                 """
@@ -872,6 +927,7 @@ class CardStore:
             return []
         card_ids = [int(row["id"]) for row in rows]
         tags_by_card: dict[int, list[str]] = {card_id: [] for card_id in card_ids}
+        hints_by_card = {}
         for start in range(0, len(card_ids), 900):
             chunk = card_ids[start : start + 900]
             placeholders = ",".join("?" for _ in chunk)
@@ -885,8 +941,15 @@ class CardStore:
             ).fetchall()
             for tag_row in tag_rows:
                 tags_by_card[int(tag_row["card_id"])].append(str(tag_row["tag"]))
+            for hint in self._connection.execute(
+                f"SELECT * FROM card_hints WHERE card_id IN ({placeholders})", chunk,
+            ).fetchall():
+                hints_by_card[int(hint["card_id"])] = HintContent(
+                    (hint["subtle"], hint["guidance"], hint["solution"]), hint["revealed"],
+                )
         return [
-            self._row_to_card(row, tuple(tags_by_card[int(row["id"])])) for row in rows
+            self._row_to_card(row, tuple(tags_by_card[int(row["id"])]),
+                              hints_by_card.get(int(row["id"]))) for row in rows
         ]
 
     def _tags_for_card(self, card_id: int) -> tuple[str, ...]:
@@ -905,13 +968,13 @@ class CardStore:
         )
 
     @staticmethod
-    def _row_to_card(row: sqlite3.Row, tags: tuple[str, ...] = ()) -> Card:
+    def _row_to_card(row: sqlite3.Row, tags: tuple[str, ...] = (), hints: HintContent | None = None) -> Card:
         return Card(
             id=int(row["id"]),
             kind=CardKind(row["kind"]),
             game=str(row["game"]),
             title=str(row["title"]),
-            content=str(row["content"]),
+            content="" if hints is not None else str(row["content"]),
             image_path=str(row["image_path"]),
             opacity=float(row["opacity"]),
             x=int(row["x"]),
@@ -926,4 +989,5 @@ class CardStore:
             updated_at=str(row["updated_at"]),
             deleted_at=str(row["deleted_at"]),
             tags=tags,
+            hints=hints,
         )

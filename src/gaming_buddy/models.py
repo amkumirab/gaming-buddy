@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from gaming_buddy.hint_cards import HintContent
+
 
 class CardKind(StrEnum):
     NOTE = "note"
@@ -35,6 +37,7 @@ class Card:
     updated_at: str = ""
     deleted_at: str = ""
     tags: tuple[str, ...] = ()
+    hints: HintContent | None = None
 
     def with_timestamps(self) -> Card:
         now = utc_now()
