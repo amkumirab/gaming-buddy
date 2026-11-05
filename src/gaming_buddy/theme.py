@@ -121,13 +121,14 @@ QLabel#emptyState {
     color: #a9a1bf;
     padding: 16px;
 }
-QTabWidget#mainTabs::pane, QTabWidget#settingsTabs::pane {
+QTabWidget#mainTabs::pane, QTabWidget#settingsTabs::pane, QTabWidget#hintStageTabs::pane {
     background: #12101b;
     border: 1px solid #352d47;
     border-radius: 12px;
     top: -1px;
 }
-QTabWidget#mainTabs QTabBar::tab, QTabWidget#settingsTabs QTabBar::tab {
+QTabWidget#mainTabs QTabBar::tab, QTabWidget#settingsTabs QTabBar::tab,
+QTabWidget#hintStageTabs QTabBar::tab {
     background: #191624;
     border: 1px solid #352d47;
     border-bottom: none;
@@ -139,16 +140,19 @@ QTabWidget#mainTabs QTabBar::tab, QTabWidget#settingsTabs QTabBar::tab {
     padding: 8px 6px;
     margin-right: 2px;
 }
-QTabWidget#mainTabs QTabBar::tab:hover, QTabWidget#settingsTabs QTabBar::tab:hover {
+QTabWidget#mainTabs QTabBar::tab:hover, QTabWidget#settingsTabs QTabBar::tab:hover,
+QTabWidget#hintStageTabs QTabBar::tab:hover {
     background: #252034;
     color: #f4f1ff;
 }
-QTabWidget#mainTabs QTabBar::tab:selected, QTabWidget#settingsTabs QTabBar::tab:selected {
+QTabWidget#mainTabs QTabBar::tab:selected, QTabWidget#settingsTabs QTabBar::tab:selected,
+QTabWidget#hintStageTabs QTabBar::tab:selected {
     background: #2e2645;
     border-color: #7657ff;
     color: #ffffff;
 }
-QTabWidget#mainTabs QTabBar::tab:focus, QTabWidget#settingsTabs QTabBar::tab:focus {
+QTabWidget#mainTabs QTabBar::tab:focus, QTabWidget#settingsTabs QTabBar::tab:focus,
+QTabWidget#hintStageTabs QTabBar::tab:focus {
     border: 2px solid #a893ff;
 }
 QScrollArea#tabScroll {
