@@ -42,6 +42,7 @@ profiles and saved layouts keep each game's cards organized.
 - Format notes with Markdown and preview headings, lists, emphasis, quotes, and code
 - Apply common Markdown formatting from the note toolbar or keyboard shortcuts
 - Create checklists and tick tasks directly on pinned notes with saved completion progress
+- Write three-stage hint cards and reveal clues gradually, with confirmation before the full solution
 - Autosave unfinished notes locally and restore them after an interrupted session
 - Move and resize every pinned card
 - Snap pins to nearby screen edges and lock their position and size
@@ -260,8 +261,9 @@ checksum command, and the distinction between automated and clean-machine testin
 Testers can [prepare a candidate report without Python](docs/windows-release.md#prepare-a-candidate-report-without-python)
 to verify their download and record installation, game compatibility, and performance
 against the exact installer checksum. Report preparation does not approve a release.
-The [2026-10-30 candidate record](docs/release-candidates/2026-10-30.md) identifies a
-fresh tested Actions installer and lists the desktop checks that remain pending.
+The [2026-11-05 candidate record](docs/release-candidates/2026-11-05.md) identifies a
+fresh tested Actions installer including hint cards and lists the desktop checks that
+remain pending.
 
 ## How to use
 
@@ -271,6 +273,11 @@ fresh tested Actions installer and lists the desktop checks that remain pending.
    to check the rendered result. `Ctrl+B` and `Ctrl+I` format selected text while writing.
    Unfinished text is saved locally after a short pause and restored the next time the app
    starts. Choose **Discard draft** to remove it without creating a card.
+   To write a layered guide, choose **New hint card…** beside **Checklist**. Fill in the
+   spoiler-free title, game, optional tags, and all three stages. Hint cards appear under
+   **Notes** in the library. Reveal stages from a pin or the card preview; the final solution
+   asks for confirmation. **Start over** hides every stage again. See [Hint cards](docs/hint-cards.md)
+   for editing, sharing, and storage behavior.
 3. Choose **Capture area**, drag around a clue or map, and release. Open the **Capture** tab in
    Settings to save and pin immediately, save quietly to the library, or review each capture.
    You can also add a 3- or 5-second delay, keep the panel hidden afterward, and control system
@@ -475,7 +482,8 @@ gaming-buddy/
 - Card exports are written only to the selected location and omit local database IDs and source
   file paths. Their Markdown and JSON contents may include the selected notes and extracted text.
 - Shared card packs are local, unencrypted ZIP files. The importer never extracts archive paths,
-  opens links, or loads remote images. It accepts version 1 card exports, not workspace backups.
+  opens links, or loads remote images. It accepts version 1 card exports and version 2
+  exports containing hint cards, not workspace backups.
   Limits are 128 MiB compressed, 256 MiB uncompressed, 4 MiB metadata, 1,000 cards,
   64 MiB per image, 32 million pixels per image, and 64 million pixels across all images.
   ZIP64, encrypted files, unsafe paths, unknown members, and corrupt images are rejected.
@@ -483,6 +491,11 @@ gaming-buddy/
   On a save failure, new cards and tags are rolled back and only newly created image copies
   are removed. Existing cards and images are never overwritten.
 - Backup ZIP files are not encrypted, so they should be stored in a trusted location.
+- Hint card titles, games, and tags are public metadata; searches never match hint stages.
+  Copy actions include only revealed stages. Shared packs reset reveal progress to zero and
+  omit stages from their Markdown index and import preview, but their JSON contains the full
+  guide. Workspace backups containing hints use version 3 and preserve reveal progress.
+  Local databases and ZIP files are unencrypted; hiding stages in the interface is not encryption.
 - Optional update checks contact only the project's GitHub Releases API. They can be disabled
   from the tray menu.
 - Updates are never downloaded or installed without the user's explicit choice. Installer
