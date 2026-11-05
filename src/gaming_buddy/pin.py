@@ -26,6 +26,8 @@ from PySide6.QtWidgets import (
 )
 
 from gaming_buddy.checklist_view import ChecklistView
+from gaming_buddy.hint_cards import HintContent
+from gaming_buddy.hint_view import HintView
 from gaming_buddy.markdown_view import MarkdownPreview
 from gaming_buddy.models import Card, CardKind
 
@@ -253,6 +255,7 @@ class PinWidget(QWidget):
         on_copy_text: Callable[[Card], None],
         on_open_location: Callable[[Card], None],
         on_note_changed: Callable[[Card, str, str], bool] | None = None,
+        on_hint_progress: Callable[[Card, HintContent, int], HintContent | None] | None = None,
     ) -> None:
         super().__init__()
         self.card = card
@@ -269,6 +272,8 @@ class PinWidget(QWidget):
         self._on_copy_text = on_copy_text
         self._on_open_location = on_open_location
         self._on_note_changed = on_note_changed
+        self._on_hint_progress = on_hint_progress
+        self.hint_view: HintView | None = None
         self.note_view: ChecklistView | None = None
         self._drag_origin: QPoint | None = None
         self._drag_moved = False
@@ -314,7 +319,7 @@ class PinWidget(QWidget):
         frame.setStyleSheet(
             """
             QFrame#pinFrame {
-                background: #14111deF;
+                background: #ef14111d;
                 border: 1px solid #735dbe;
                 border-radius: 12px;
             }
@@ -330,7 +335,7 @@ class PinWidget(QWidget):
             }
             QPushButton#pinCollapse {
                 color: #d5caff; background: #211b31; border: 1px solid #4b3d70;
-                border-radius: 5px; font-size: 14px; font-weight: 700;
+                border-radius: 5px; font-size: 14px; font-weight: 700; padding: 0;
             }
             QPushButton#pinCollapse:hover { background: #302546; }
             QTextBrowser {
@@ -376,7 +381,12 @@ class PinWidget(QWidget):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(4)
 
-        if self.card.kind is CardKind.IMAGE and Path(self.card.image_path).is_file():
+        if self.card.hints:
+            self.hint_view = HintView(self._save_hint_progress if self._on_hint_progress else None,
+                                      self._body)
+            self.hint_view.set_hints(self.card.hints)
+            body_layout.addWidget(self.hint_view, 1)
+        elif self.card.kind is CardKind.IMAGE and Path(self.card.image_path).is_file():
             image = ScaledImage(self.card.image_path)
             image.open_requested.connect(self._open_original)
             body_layout.addWidget(image, 1)
@@ -415,6 +425,14 @@ class PinWidget(QWidget):
         self.card.content = content
         return True
 
+    def _save_hint_progress(self, expected: HintContent, target: int) -> HintContent | None:
+        if self._on_hint_progress is None:
+            return None
+        result = self._on_hint_progress(self.card, expected, target)
+        if result is not None:
+            self.card.hints = result
+        return result
+
     def _show_checklist_progress(self, done: int, total: int) -> None:
         self.checklist_progress.setText(f"{done} of {total} completed")
         self.checklist_progress.setVisible(total > 0)
@@ -424,6 +442,8 @@ class PinWidget(QWidget):
         self.checklist_progress.show()
 
     def set_click_through(self, enabled: bool) -> None:
+        if self.hint_view is not None:
+            self.hint_view.set_interactive(not enabled)
         if self.note_view is not None:
             self.note_view.set_interactive(not enabled)
         was_visible = self.isVisible()
@@ -458,9 +478,11 @@ class PinWidget(QWidget):
         edit.triggered.connect(lambda: self._on_edit(self.card))
         menu.addAction(edit)
         copy = QAction(
+            "Copy revealed hints" if self.card.hints else
             "Copy image" if self.card.kind is CardKind.IMAGE else "Copy note text",
             menu,
         )
+        copy.setEnabled(self.card.hints is None or self.card.hints.revealed > 0)
         copy.triggered.connect(lambda: self._on_copy(self.card))
         menu.addAction(copy)
         if self.card.kind is CardKind.IMAGE:

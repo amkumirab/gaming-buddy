@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gaming_buddy.hint_cards import HintContent
+from gaming_buddy.hint_view import HintView
 from gaming_buddy.markdown_view import MarkdownPreview
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.tags import format_tags
@@ -112,9 +115,12 @@ class CardPreviewPanel(QFrame):
     copy_requested = Signal(object)
     extract_text_requested = Signal(object)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *,
+                 on_hint_progress: Callable[[Card, HintContent, int], HintContent | None]
+                 | None = None) -> None:
         super().__init__(parent)
         self._card: Card | None = None
+        self._on_hint_progress = on_hint_progress
         self.setObjectName("cardPreview")
         self.setMinimumWidth(320)
 
@@ -154,6 +160,9 @@ class CardPreviewPanel(QFrame):
         layout.addWidget(self.metadata)
         layout.addWidget(self.content_heading)
         layout.addWidget(self.content, 1)
+        self.hint_view = HintView(self._save_hint_progress if on_hint_progress else None, self)
+        self.hint_view.hide()
+        layout.addWidget(self.hint_view, 1)
 
         actions = QGridLayout()
         actions.setHorizontalSpacing(8)
@@ -195,7 +204,18 @@ class CardPreviewPanel(QFrame):
         self.game.setText(" · ".join(statuses) + (f"\n{tag_text}" if tag_text else ""))
 
         saved = format_saved_at(card.created_at)
-        if is_image:
+        self.hint_view.setVisible(card.hints is not None)
+        self.hint_view.set_hints(card.hints)
+        if card.hints:
+            self.kind.setText("HINT")
+            self.metadata.setText(f"Hint card · {saved}")
+            self.image.hide()
+            self.image.clear_image()
+            self.content.clear()
+            self.extract_button.hide()
+            self.copy_button.setText("Copy revealed hints")
+            self.copy_button.setEnabled(bool(card.hints.revealed))
+        elif is_image:
             image_path = Path(card.image_path)
             available = image_path.is_file()
             self.metadata.setText(f"{image_summary(image_path)} · {saved}")
@@ -217,8 +237,8 @@ class CardPreviewPanel(QFrame):
             self.copy_button.setText("Copy note")
             self.copy_button.setEnabled(bool(card.content))
 
-        self.content_heading.show()
-        self.content.show()
+        self.content_heading.setVisible(card.hints is None)
+        self.content.setVisible(card.hints is None)
         self.pin_button.setText("Show pin" if card.pinned else "Pin")
         self.pin_button.setEnabled(card.id is not None)
         self.edit_button.setEnabled(card.id is not None)
@@ -233,6 +253,9 @@ class CardPreviewPanel(QFrame):
         self.image.clear_image()
         self.content_heading.hide()
         self.content.hide()
+        self.content.clear()
+        self.hint_view.hide()
+        self.hint_view.set_hints(None)
         self.extract_button.hide()
         for button in (self.pin_button, self.edit_button, self.copy_button):
             button.setEnabled(False)
@@ -240,6 +263,16 @@ class CardPreviewPanel(QFrame):
     def _request_pin(self) -> None:
         if self._card is not None:
             self.pin_requested.emit(self._card)
+
+    def _save_hint_progress(self, expected: HintContent, target: int) -> HintContent | None:
+        card = self._card
+        if card is None or self._on_hint_progress is None:
+            return None
+        result = self._on_hint_progress(card, expected, target)
+        if result is not None and self._card is card:
+            card.hints = result
+            self.copy_button.setEnabled(bool(result.revealed))
+        return result
 
     def _request_edit(self) -> None:
         if self._card is not None:

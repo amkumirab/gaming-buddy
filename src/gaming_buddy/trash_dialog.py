@@ -103,7 +103,7 @@ class TrashDialog(QDialog):
     def refresh(self) -> None:
         self.card_list.clear()
         for card in self.store.list_deleted(self.search.text()):
-            kind = "Screenshot" if card.kind is CardKind.IMAGE else "Note"
+            kind = "Hint" if card.hints else "Screenshot" if card.kind is CardKind.IMAGE else "Note"
             game = card.game or "General"
             item = QListWidgetItem(
                 f"{card.title}\n     {kind} · {game} · Deleted {_display_time(card.deleted_at)}"

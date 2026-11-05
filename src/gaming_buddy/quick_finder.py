@@ -29,7 +29,7 @@ def find_cards(cards: Sequence[Card], query: str, active_game: str = "") -> list
     for index, card in enumerate(cards):
         title = card.title.casefold()
         game = card.game.casefold()
-        content = card.content.casefold()
+        content = "" if card.hints else card.content.casefold()
         tags = " ".join(card.tags).casefold()
         combined = f"{title} {game} {content} {tags}"
         if terms and not all(term in combined for term in terms):
@@ -68,7 +68,7 @@ def find_cards(cards: Sequence[Card], query: str, active_game: str = "") -> list
 
 
 def card_statuses(card: Card) -> list[str]:
-    statuses = ["Image" if card.kind is CardKind.IMAGE else "Note"]
+    statuses = ["Hint" if card.hints else "Image" if card.kind is CardKind.IMAGE else "Note"]
     if card.pinned:
         statuses.append("Pinned")
         if card.locked:
@@ -224,7 +224,7 @@ class QuickFinderDialog(QDialog):
             item = QListWidgetItem(f"{favorite}{kind}  {card.title}\n     {details}")
             item.setData(Qt.ItemDataRole.UserRole, card.id)
             if card.kind is CardKind.NOTE:
-                tooltip = card.content
+                tooltip = "Hint stages stay hidden until revealed." if card.hints else card.content
             elif card.content.strip():
                 tooltip = f"{card.content}\n\nFile: {card.image_path}"
             else:

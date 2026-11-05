@@ -86,6 +86,9 @@ from gaming_buddy.card_preview import CardPreviewPanel
 from gaming_buddy.checklist_editor import insert_checklist
 from gaming_buddy.diagnostics import DiagnosticHistory, IssueKind, collect_diagnostics
 from gaming_buddy.focus_mode import FocusModeState, PinPresentation
+from gaming_buddy.hint_cards import HintContent
+from gaming_buddy.hint_controller import HintCardController
+from gaming_buddy.hint_editor import HintEditor
 from gaming_buddy.hotkeys import DEFAULT_SHORTCUTS, complete_shortcuts, validate_shortcuts
 from gaming_buddy.image_annotation import (
     AnnotationDialog,
@@ -242,6 +245,7 @@ class Dashboard(QMainWindow):
         self.quick_panel = QuickPanelController(self)
         self.walkthrough = WalkthroughController(self)
         self.capture_text = CaptureTextController(self)
+        self.hint_cards = HintCardController(self)
         for delay, callback in (
             (0, self._purge_expired_trash), (0, self.restore_workspace),
             (0, self.game_detector.start), (350, self._show_first_run_setup),
@@ -436,7 +440,18 @@ class Dashboard(QMainWindow):
             "Turn the current line or selected note lines into checklist items",
         )
         self.note_checklist_button.clicked.connect(lambda: insert_checklist(self.note_input))
-        note_layout.addWidget(self.note_checklist_button, 0, Qt.AlignmentFlag.AlignLeft)
+        note_tools = QHBoxLayout()
+        note_tools.addWidget(self.note_checklist_button)
+        self.new_hint_button = QPushButton("New hint card…")
+        self.new_hint_button.setObjectName("compact")
+        self._configure_button(
+            self.new_hint_button, QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            "Write a guide with three stages that you reveal one at a time",
+        )
+        self.new_hint_button.clicked.connect(self._create_hint_card)
+        note_tools.addWidget(self.new_hint_button)
+        note_tools.addStretch(1)
+        note_layout.addLayout(note_tools)
 
         self.note_draft_bar = QFrame()
         self.note_draft_bar.setObjectName("setupCard")
@@ -956,7 +971,7 @@ class Dashboard(QMainWindow):
         )
         self.main_tabs.setTabToolTip(library_tab, "Search and manage saved cards")
 
-        self.card_preview = CardPreviewPanel()
+        self.card_preview = CardPreviewPanel(on_hint_progress=self._save_hint_progress)
         self.card_preview.pin_requested.connect(self.show_pin)
         self.card_preview.edit_requested.connect(self._edit_card)
         self.card_preview.copy_requested.connect(self._copy_card)
@@ -2310,6 +2325,7 @@ class Dashboard(QMainWindow):
             self._copy_extracted_text,
             self._open_card_location,
             self._save_pin_note,
+            self._save_hint_progress,
         )
         pin.set_click_through(self.click_through.isChecked())
         self.pins[card.id] = pin
@@ -2672,7 +2688,8 @@ class Dashboard(QMainWindow):
             sort=normalize_library_sort(self.library_sort.currentData()),
         ):
             game_label = card.game or "General"
-            details = [game_label, "Image" if card.kind is CardKind.IMAGE else "Note"]
+            details = [game_label, "Hint" if card.hints else
+                       "Image" if card.kind is CardKind.IMAGE else "Note"]
             if card.pinned:
                 details.append("Pinned")
             if card.favorite:
@@ -3141,8 +3158,10 @@ class Dashboard(QMainWindow):
         menu = QMenu(self)
         edit_action = menu.addAction("Edit card…")
         copy_action = menu.addAction(
+            "Copy revealed hints" if card.hints else
             "Copy image" if card.kind is CardKind.IMAGE else "Copy note text"
         )
+        copy_action.setEnabled(card.hints is None or card.hints.revealed > 0)
         annotate_action = None
         extract_text_action = None
         copy_text_action = None
@@ -3226,8 +3245,23 @@ class Dashboard(QMainWindow):
             self.statusBar().showMessage("Checklist saved. Reopen the library to refresh its preview.", 4000)
         return True
 
+    def _create_hint_card(self) -> None:
+        self.hint_cards.create()
+
+    def _save_hint_progress(self, card: Card, expected: HintContent,
+                            target: int) -> HintContent | None:
+        return self.hint_cards.save_progress(card, expected, target)
+
     def _edit_card(self, card: Card) -> None:
-        if card.id is None:
+        if card.id is None or self._quitting:
+            return
+        if card.hints and QMessageBox.question(
+            self, "Open hint editor?",
+            "The authoring view contains every stage, including the full solution. "
+            "Changing a stage resets reveal progress. Open it?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        ) != QMessageBox.StandardButton.Yes:
             return
         self.restore_pin_cycle(show_message=False)
         pin = self.pins.get(card.id)
@@ -3239,17 +3273,23 @@ class Dashboard(QMainWindow):
                 QMessageBox.warning(self, "Edit unavailable", "The current pin layout could not be saved. Try again.")
                 return
 
-        dialog = CardEditor(card, self)
+        dialog = HintEditor(card, self) if card.hints else CardEditor(card, self)
         try:
             while True:
                 if not dialog.exec() or self._quitting:
                     return
                 title, game, content = dialog.values()
                 try:
-                    saved = self.store.update_details(
-                        card.id, title=title, game=game or "General", content=content,
-                        tags=dialog.tags(),
-                    )
+                    if isinstance(dialog, HintEditor):
+                        saved = self.store.update_hint_details(
+                            card.id, title=title, game=game or "General", tags=dialog.tags(),
+                            hints=dialog.hint_content(),
+                        )
+                    else:
+                        saved = self.store.update_details(
+                            card.id, title=title, game=game or "General", content=content,
+                            tags=dialog.tags(),
+                        )
                 except sqlite3.Error:
                     QMessageBox.warning(
                         self, "Edit not saved",
@@ -3281,6 +3321,18 @@ class Dashboard(QMainWindow):
 
     def _copy_card(self, card: Card) -> None:
         clipboard = QApplication.clipboard()
+        if card.hints:
+            try:
+                current = self.store.get(card.id) if card.id is not None else None
+            except sqlite3.Error:
+                self.statusBar().showMessage("Could not read hint progress. Nothing copied.", 3000)
+                return
+            if current is not None and current.hints and current.hints.visible_text:
+                clipboard.setText(current.hints.visible_text)
+                self.statusBar().showMessage("Revealed hints copied to clipboard", 2500)
+            else:
+                self.statusBar().showMessage("Reveal a hint before copying. Nothing copied.", 3000)
+            return
         if card.kind is CardKind.NOTE:
             clipboard.setText(card.content)
             self.statusBar().showMessage("Note copied to clipboard", 2500)
