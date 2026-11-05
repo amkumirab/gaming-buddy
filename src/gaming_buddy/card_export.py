@@ -15,6 +15,7 @@ from gaming_buddy.models import Card, CardKind
 
 EXPORT_FORMAT = "gaming-buddy-cards"
 EXPORT_VERSION = 1
+HINT_EXPORT_VERSION = 2
 MAX_IMAGE_BYTES = 256 * 1024 * 1024
 _UNSAFE_FILENAME = re.compile(r"[^\w.-]+", re.UNICODE)
 
@@ -67,7 +68,7 @@ def create_card_export(destination: Path, cards: list[Card]) -> CardExportSummar
     created_at = datetime.now(UTC).isoformat(timespec="seconds")
     manifest = {
         "format": EXPORT_FORMAT,
-        "version": EXPORT_VERSION,
+        "version": HINT_EXPORT_VERSION if any(card.hints for card in cards) else EXPORT_VERSION,
         "created_at": created_at,
         "cards": records,
     }
@@ -132,10 +133,11 @@ def _safe_filename(value: str) -> str:
 
 def _card_record(card: Card, image_archive: str) -> dict[str, Any]:
     return {
+        **({"hints": card.hints.to_record(share=True)} if card.hints else {}),
         "kind": card.kind.value,
         "title": card.title,
         "game": card.game,
-        "content": card.content,
+        "content": "" if card.hints else card.content,
         "tags": list(card.tags),
         "favorite": card.favorite,
         "created_at": card.created_at,
@@ -159,7 +161,7 @@ def _build_readme(records: list[dict[str, Any]], created_at: str) -> str:
         lines.extend((f"## {index}. {title}", ""))
         details = [
             f"- **Game:** {_markdown_text(str(record['game'])) or 'General'}",
-            f"- **Type:** {str(record['kind']).title()}",
+            f"- **Type:** {'Hint' if 'hints' in record else str(record['kind']).title()}",
         ]
         tags = record["tags"]
         if tags:
@@ -176,7 +178,10 @@ def _build_readme(records: list[dict[str, Any]], created_at: str) -> str:
         elif record["kind"] == CardKind.IMAGE.value:
             lines.extend(("_The original image was unavailable when this export was created._", ""))
 
-        content = str(record["content"]).strip()
+        if "hints" in record:
+            lines.extend((("Hint stages are hidden. Import this pack in Gaming Buddy to reveal "
+                           "them one at a time. The full guide is stored in `cards.json`."), ""))
+        content = "" if "hints" in record else str(record["content"]).strip()
         if content:
             heading = "Extracted text" if record["kind"] == CardKind.IMAGE.value else "Note"
             lines.extend((f"### {heading}", "", _markdown_block(content), ""))

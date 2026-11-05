@@ -41,7 +41,8 @@ class CardImportResult:
 def _metadata(card: Card | PackCard) -> tuple:
     # Content is deliberately exact: indentation, case, and blank lines are meaningful.
     return (card.kind, card.game.strip().casefold(), card.title.strip(), card.content,
-            tuple(sorted(tag.casefold() for tag in card.tags)))
+            tuple(sorted(tag.casefold() for tag in card.tags)),
+            card.hints.steps if card.hints else None)
 
 
 def _owned_digest(path: Path, root: Path, cancelled: CancelCheck | None) -> str | None:
@@ -161,7 +162,8 @@ def commit_card_import(
                 path = str(saved[image.digest])
             cards.append(Card(None, entry.kind, entry.game, entry.title,
                               content=entry.content, image_path=path, tags=entry.tags,
-                              favorite=entry.favorite, created_at=entry.created_at))
+                              favorite=entry.favorite, created_at=entry.created_at,
+                              hints=entry.hints.with_progress(0) if entry.hints else None))
         store.add_many(cards)
         committed = True
     except (OSError, sqlite3.Error) as error:

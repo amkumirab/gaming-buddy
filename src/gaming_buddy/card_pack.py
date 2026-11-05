@@ -16,7 +16,8 @@ from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile
 from PySide6.QtCore import QBuffer, QIODevice, Qt
 from PySide6.QtGui import QImageReader
 
-from gaming_buddy.card_export import EXPORT_FORMAT, EXPORT_VERSION
+from gaming_buddy.card_export import EXPORT_FORMAT, EXPORT_VERSION, HINT_EXPORT_VERSION
+from gaming_buddy.hint_cards import HintContent
 from gaming_buddy.models import CardKind
 from gaming_buddy.tags import MAX_TAG_LENGTH, MAX_TAGS_PER_CARD, normalize_tags
 
@@ -60,6 +61,7 @@ class PackCard:
     favorite: bool
     created_at: str
     image: PackImage | None = None
+    hints: HintContent | None = None
 
     @property
     def available(self) -> bool:
@@ -188,7 +190,7 @@ def _validate_members(archive: ZipFile) -> set[str]:
     return names
 
 
-def _card(record: object, images: dict[str, PackImage]) -> PackCard:
+def _card(record: object, images: dict[str, PackImage], version: int) -> PackCard:
     if not isinstance(record, dict):
         raise CardPackError("Card metadata must contain objects.")
     kind = CardKind(record.get("kind"))
@@ -220,9 +222,14 @@ def _card(record: object, images: dict[str, PackImage]) -> PackCard:
     declared = record.get("image_available", available)
     if type(declared) is not bool or declared != available:
         raise CardPackError("A card has inconsistent image availability.")
-    return PackCard(kind, _text(record, "game", MAX_GAME_LENGTH), title,
-                    _text(record, "content", 200_000, multiline=True), normalize_tags(tags),
-                    favorite, created, image)
+    content = _text(record, "content", 200_000, multiline=True)
+    hints = None
+    if "hints" in record:
+        if version < HINT_EXPORT_VERSION or kind is not CardKind.NOTE or content or image_name:
+            raise CardPackError("A hint card has incompatible metadata.")
+        hints = HintContent.from_record(record["hints"], share=True)
+    return PackCard(kind, _text(record, "game", MAX_GAME_LENGTH), title, content,
+                    normalize_tags(tags), favorite, created, image, hints)
 
 
 def load_card_pack(source: Path, *, cancelled: CancelCheck | None = None) -> CardPack:
@@ -240,7 +247,7 @@ def load_card_pack(source: Path, *, cancelled: CancelCheck | None = None) -> Car
                                   object_pairs_hook=_unique_object, parse_constant=_reject_constant)
             if (not isinstance(manifest, dict) or manifest.get("format") != EXPORT_FORMAT
                     or type(manifest.get("version")) is not int
-                    or manifest["version"] != EXPORT_VERSION):
+                    or manifest["version"] not in (EXPORT_VERSION, HINT_EXPORT_VERSION)):
                 raise CardPackError("This is not a supported Gaming Buddy card pack.")
             records = manifest.get("cards")
             if not isinstance(records, list) or not 1 <= len(records) <= MAX_CARDS:
@@ -261,7 +268,7 @@ def load_card_pack(source: Path, *, cancelled: CancelCheck | None = None) -> Car
                     raise CardPackError("Images exceed the card pack's total pixel limit.")
                 images[name] = image
             check_cancelled(cancelled)
-            return CardPack(tuple(_card(record, images) for record in records))
+            return CardPack(tuple(_card(record, images, manifest["version"]) for record in records))
     except CardPackError:
         raise
     except (OSError, ValueError, TypeError, BadZipFile, RuntimeError, EOFError,

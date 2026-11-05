@@ -104,7 +104,7 @@ def test_malformed_card_metadata_is_rejected(tmp_path, field, value):
 
 
 @pytest.mark.parametrize("field,value", [
-    ("version", True), ("version", 2), ("format", "gaming-buddy-workspace"),
+    ("version", True), ("version", 3), ("format", "gaming-buddy-workspace"),
     ("cards", []), ("cards", {}), ("cards", [None]),
 ])
 def test_unsupported_manifest_is_rejected(tmp_path, field, value):

@@ -260,7 +260,10 @@ class CardPackDialog(QDialog):
             return
         card = self._pack.cards[index]
         self.preview_title.setText(card.title)
-        self.note_preview.setPlainText(card.content)
+        self.note_preview.setPlainText(
+            "Hint card: all stages stay hidden until you import and reveal them."
+            if card.hints else card.content
+        )
         self.image_preview.set_image(b"")
         self.image_preview.setVisible(card.image is not None)
         if card.image is not None:
