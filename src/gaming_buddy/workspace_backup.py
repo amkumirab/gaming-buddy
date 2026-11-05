@@ -13,6 +13,7 @@ from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
 
 from PySide6.QtCore import QSettings
 
+from gaming_buddy.hint_cards import HintContent
 from gaming_buddy.models import Card, CardKind
 from gaming_buddy.storage import CardStore
 from gaming_buddy.tags import normalize_tags
@@ -20,7 +21,8 @@ from gaming_buddy.workspace_presets import PresetPinLayout, WorkspacePreset
 
 BACKUP_FORMAT = "gaming-buddy-workspace"
 BACKUP_VERSION = 2
-SUPPORTED_BACKUP_VERSIONS = {1, BACKUP_VERSION}
+HINT_BACKUP_VERSION = 3
+SUPPORTED_BACKUP_VERSIONS = {1, BACKUP_VERSION, HINT_BACKUP_VERSION}
 MAX_ARCHIVE_FILES = 10_000
 MAX_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_JSON_BYTES = 20 * 1024 * 1024
@@ -125,7 +127,7 @@ def create_workspace_backup(
     )
     manifest = {
         "format": BACKUP_FORMAT,
-        "version": BACKUP_VERSION,
+        "version": HINT_BACKUP_VERSION if any(card.hints for card in cards) else BACKUP_VERSION,
         "created_at": created_at,
         "card_count": summary.card_count,
         "image_count": summary.image_count,
@@ -286,7 +288,7 @@ def _read_and_verify(
             if manifest.get("format") != BACKUP_FORMAT:
                 raise BackupError("This is not a Gaming Buddy workspace backup.")
             version = manifest.get("version")
-            if version not in SUPPORTED_BACKUP_VERSIONS:
+            if type(version) is not int or version not in SUPPORTED_BACKUP_VERSIONS:
                 raise BackupError("This backup version is not supported.")
             checksums = manifest.get("checksums")
             if not isinstance(checksums, dict):
@@ -345,6 +347,13 @@ def _read_and_verify(
     if image_count != len(archive_images):
         raise BackupError("The backup image count does not match its manifest.")
     for record in records:
+        if "hints" in record:
+            try:
+                if version < HINT_BACKUP_VERSION:
+                    raise ValueError("Hint cards require a newer backup version.")
+                _record_to_card(record)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise BackupError("The backup contains an invalid hint card.") from exc
         image_archive = str(record.get("image_archive", ""))
         if image_archive and (
             not image_archive.startswith("captures/") or image_archive not in archive_images
@@ -409,11 +418,12 @@ def _is_portable_setting(key: str) -> bool:
 
 def _card_to_record(card: Card, image_archive: str) -> dict[str, Any]:
     return {
+        **({"hints": card.hints.to_record()} if card.hints else {}),
         "source_id": card.id,
         "kind": card.kind.value,
         "game": card.game,
         "title": card.title,
-        "content": card.content,
+        "content": "" if card.hints else card.content,
         "tags": list(card.tags),
         "image_archive": image_archive,
         "opacity": card.opacity,
@@ -493,6 +503,11 @@ def _record_to_card(record: dict[str, Any]) -> tuple[Card, str]:
     raw_tags = record.get("tags", [])
     if not isinstance(raw_tags, list):
         raise TypeError("Card tags are invalid")
+    hints = None
+    if "hints" in record:
+        if kind is not CardKind.NOTE or record.get("content", "") or record.get("image_archive"):
+            raise ValueError("A hint card has incompatible metadata.")
+        hints = HintContent.from_record(record["hints"])
     card = Card(
         id=None,
         kind=kind,
@@ -511,6 +526,7 @@ def _record_to_card(record: dict[str, Any]) -> tuple[Card, str]:
         created_at=str(record.get("created_at", "")),
         updated_at=str(record.get("updated_at", "")),
         tags=normalize_tags(str(tag) for tag in raw_tags),
+        hints=hints,
     )
     return card, str(record.get("image_archive", ""))
 
@@ -526,6 +542,7 @@ def _card_identity(card: Card) -> tuple[str, ...]:
         card.content,
         card.created_at,
         image_digest,
+        json.dumps(card.hints.steps) if card.hints else "",
     )
 
 
@@ -537,6 +554,7 @@ def _record_identity(record: dict[str, Any], image_digest: str) -> tuple[str, ..
         str(record.get("content", "")),
         str(record.get("created_at", "")),
         image_digest,
+        json.dumps(HintContent.from_record(record["hints"]).steps) if "hints" in record else "",
     )
 
 
