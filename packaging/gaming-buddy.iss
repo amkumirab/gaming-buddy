@@ -75,6 +75,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--after-install"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
+#include "installer-maintenance.iss"
+
 function HasCommandLineParameter(const Parameter: String): Boolean;
 var
   Index: Integer;
