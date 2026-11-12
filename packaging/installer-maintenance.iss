@@ -6,6 +6,14 @@ var
   InstalledPacked: Int64;
   HasInstalledVersion: Boolean;
 
+function ProbeFile(FileName: String; Access, Share, Security, Disposition,
+  Attributes, Template: LongWord): THandle;
+  external 'CreateFileW@kernel32.dll stdcall';
+function CloseProbe(Handle: THandle): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
+function DirectoryAttributes(FileName: String): LongWord;
+  external 'GetFileAttributesW@kernel32.dll stdcall';
+
 function ParseInstalledVersion(Value: String; var Packed: Int64): Boolean;
 var
   I, Dots: Integer;
@@ -100,6 +108,48 @@ begin
   end;
 end;
 
+function FindBlockedFile(Directory: String; Depth: Integer): String;
+var
+  FindRec: TFindRec;
+  FileName: String;
+  Handle: THandle;
+begin
+  Result := '';
+  if not DirExists(Directory) then Exit;
+  if (Depth > 32) or ((DirectoryAttributes(Directory) and FILE_ATTRIBUTE_REPARSE_POINT) <> 0) then
+  begin
+    Result := Directory;
+    Exit;
+  end;
+  if not FindFirst(AddBackslash(Directory) + '*', FindRec) then
+  begin
+    Result := Directory;
+    Exit;
+  end;
+  try
+    repeat
+      if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+      begin
+        FileName := AddBackslash(Directory) + FindRec.Name;
+        if (FindRec.Attributes and FILE_ATTRIBUTE_REPARSE_POINT) <> 0 then
+          Result := FileName
+        else if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+          Result := FindBlockedFile(FileName, Depth + 1)
+        else
+        begin
+          // OPEN_EXISTING with write access, without writing or truncating the file.
+          Handle := ProbeFile(FileName, $40000000, 7, 0, 3, $80, 0);
+          if Handle = THandle(-1) then Result := FileName
+          else CloseProbe(Handle);
+        end;
+        if Result <> '' then Exit;
+      end;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
 function MaintenanceOperation: String;
 var
   Target: Int64;
@@ -112,11 +162,23 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Blocked: String;
 begin
   Result := CheckInstalledVersion(ExpandConstant('{app}'));
   if Result <> '' then Exit;
   Log('Maintenance operation: ' + MaintenanceOperation + '; installed=' + InstalledVersion +
     '; installer={#MyAppVersion}');
+  if CheckForMutexes('{#MyAppMutex}') then
+  begin
+    Result := 'Quit Gaming Buddy from its tray menu, then retry installation. ' +
+      'No program files have been changed.';
+    Exit;
+  end;
+  Blocked := FindBlockedFile(ExpandConstant('{app}'), 0);
+  if Blocked <> '' then
+    Result := 'A Gaming Buddy file is in use or cannot be updated: ' + Blocked + #13#10 +
+      'Quit Gaming Buddy and check folder permissions, then retry. No program files have been changed.';
 end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo,

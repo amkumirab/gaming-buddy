@@ -1,5 +1,7 @@
 import base64
 import os
+import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -102,6 +104,26 @@ def test_registry_metadata_cannot_bypass_downgrade_guard(installer, metadata):
     assert snapshot(installer.install) == before
 
 
+def test_running_fixture_app_blocks_install_and_uninstall_until_closed(installer):
+    install(installer, "0.1.0")
+    executable = installer.install / "GamingBuddy.exe"
+    ready, stop = installer.root / "ready", installer.root / "stop"
+    process = subprocess.Popen([str(executable), str(ready), str(stop)])
+    try:
+        deadline = time.monotonic() + 10
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert ready.exists()
+        before = snapshot(installer.install)
+        assert installer.run(installer.setup("0.2.0")).returncode != 0
+        assert "tray menu" in (installer.root / "last-setup.log").read_text()
+        assert installer.run(installer.install / "unins000.exe").returncode != 0
+        assert "tray menu" in (installer.root / "last-setup.log").read_text()
+        assert snapshot(installer.install) == before
+    finally:
+        stop.touch()
+        process.wait(timeout=10)
+    install(installer, "0.2.0")
 
 
 def test_executable_version_wins_over_stale_registration(installer):
@@ -126,3 +148,26 @@ def test_newer_registration_in_other_registry_view_is_not_ignored(installer):
     before = snapshot(installer.install)
     assert installer.run(installer.setup("0.2.0")).returncode != 0
     assert snapshot(installer.install) == before
+
+
+def test_locked_legacy_runtime_is_rejected_before_stale_files_are_deleted(installer):
+    import ctypes
+    from ctypes import wintypes
+
+    install(installer, "0.1.0")
+    before = snapshot(installer.install)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                  ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.CreateFileW(str(installer.install / "_internal/runtime.txt"), 0x80000000,
+                                1, None, 3, 0, None)
+    assert handle != ctypes.c_void_p(-1).value
+    try:
+        assert installer.run(installer.setup("0.2.0")).returncode != 0
+        assert "in use or cannot be updated" in (installer.root / "last-setup.log").read_text()
+        assert snapshot(installer.install) == before
+    finally:
+        kernel.CloseHandle(handle)
+    install(installer, "0.2.0")
