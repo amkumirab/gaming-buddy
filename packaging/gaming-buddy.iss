@@ -3,6 +3,8 @@
 #define MyAppPublisher "Amir Ali Mirab Zadeh Ardekani"
 #define MyAppURL "https://github.com/amkumirab/gaming-buddy"
 #define MyAppExeName "GamingBuddy.exe"
+#define MyAppMutex "Local\GamingBuddy.App.57C1EB82-EEAD-4E5F-8F24-49C61A578D08"
+#define MySetupMutex "Local\GamingBuddy.Setup.57C1EB82-EEAD-4E5F-8F24-49C61A578D08"
 
 [Setup]
 AppId={{57C1EB82-EEAD-4E5F-8F24-49C61A578D08}
@@ -32,6 +34,8 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 SetupLogging=yes
+AppMutex={#MyAppMutex}
+SetupMutex={#MySetupMutex}
 CloseApplications=yes
 RestartApplications=no
 CloseApplicationsFilter={#MyAppExeName}
@@ -46,6 +50,10 @@ VersionInfoCopyright=Copyright © 2026 {#MyAppPublisher}. All rights reserved.
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Messages]
+SetupAppRunningError=%1 is currently running.%n%nChoose Quit from its tray menu and wait for it to close. Then click OK to retry, or Cancel to exit. Setup will not close it for you.
+UninstallAppRunningError=%1 is currently running.%n%nChoose Quit from its tray menu and wait for it to close. Then click OK to retry, or Cancel to exit. Uninstall will not close it for you.
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
@@ -64,7 +72,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "GamingBuddy"; Flags: uninsdeletevalue dontcreatekey noerror
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--after-install"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
 function HasCommandLineParameter(const Parameter: String): Boolean;

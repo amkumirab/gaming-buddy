@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gaming_buddy.dashboard import Dashboard
 from gaming_buddy.hotkeys import GlobalHotkeys
+from gaming_buddy.installer_guard import InstallerBusyError, hold_installer_guard
 from gaming_buddy.paths import asset_path, ensure_data_dirs
 from gaming_buddy.single_instance import InstanceError, SingleInstance
 from gaming_buddy.storage import CardStore
@@ -26,6 +27,14 @@ def main() -> int:
     app.setStyleSheet(STYLESHEET)
     app.setWindowIcon(QIcon(str(asset_path("app-icon.png"))))
 
+    try:
+        if "--after-install" in sys.argv:
+            hold_installer_guard(wait_seconds=15)
+        else:
+            hold_installer_guard()
+    except InstallerBusyError as error:
+        QMessageBox.warning(None, "Gaming Buddy", str(error))
+        return 1
     base_dir, captures_dir = ensure_data_dirs()
     instance = SingleInstance(base_dir)
     try:

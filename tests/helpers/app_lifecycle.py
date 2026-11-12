@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import sys
 import threading
 from pathlib import Path
@@ -13,12 +14,17 @@ import gaming_buddy.app as app_module
 import gaming_buddy.dashboard as dashboard_module
 import gaming_buddy.updates as update_module
 from gaming_buddy.dashboard import Dashboard
+from gaming_buddy.installer_guard import hold_installer_guard
 from gaming_buddy.paths import ensure_data_dirs
 from gaming_buddy.text_recognition import RecognitionLanguage, RecognitionResult
 from gaming_buddy.text_recognition_dialog import TextRecognitionDialog
 from gaming_buddy.updates import ReleaseAsset, ReleaseInfo, UpdateCancelled, UpdateError
 
 root = Path(sys.argv[1])
+guard_id = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:24]
+app_module.hold_installer_guard = lambda: hold_installer_guard(
+    rf"Local\GBLifecycle.App.{guard_id}", rf"Local\GBLifecycle.Setup.{guard_id}",
+)
 mode = sys.argv[2] if len(sys.argv) > 2 else "normal"
 started = threading.Event()
 release_worker = threading.Event()
