@@ -246,6 +246,13 @@ require Python or administrator access. It creates a Start menu shortcut and
 can optionally create a desktop shortcut. Launching the application at the end of setup
 is also optional.
 
+Installers built from the current source show **Install**, **Upgrade**, or **Reinstall**
+with the detected and target versions. They refuse downgrades and invalid existing
+version metadata. Quit Gaming Buddy from its tray menu before installing or removing it;
+Setup does not force-close the application. See [Installer maintenance](docs/installer-maintenance.md)
+for running-app checks, reinstall behavior, and recovery. Older downloadable candidates
+do not include these checks unless their source record explicitly says so.
+
 Updates reuse the same installation and preserve the local workspace. Uninstalling the
 application removes program files, shortcuts, and its launch-at-sign-in entry but keeps
 notes and screenshots under `%LOCALAPPDATA%\GamingBuddy`. Interface preferences, shortcuts,
@@ -261,9 +268,9 @@ checksum command, and the distinction between automated and clean-machine testin
 Testers can [prepare a candidate report without Python](docs/windows-release.md#prepare-a-candidate-report-without-python)
 to verify their download and record installation, game compatibility, and performance
 against the exact installer checksum. Report preparation does not approve a release.
-The [2026-11-05 candidate record](docs/release-candidates/2026-11-05.md) identifies a
-fresh tested Actions installer including hint cards and lists the desktop checks that
-remain pending.
+The [2026-11-12 candidate record](docs/release-candidates/2026-11-12.md) identifies a
+fresh tested Actions installer including hint cards and installer maintenance checks,
+and lists the desktop checks that remain pending.
 
 ## How to use
 
