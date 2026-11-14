@@ -466,7 +466,7 @@ gaming-buddy/
 │   └── storage.py      # Local SQLite persistence
 ├── tests/              # Automated behavior, storage, and packaging tests
 ├── packaging/          # Windows executable and installer configuration
-├── scripts/            # Version checks, installer builds and acceptance-report preparation
+├── scripts/            # Version checks, installer builds, acceptance reports and UI captures
 ├── .github/workflows/  # Test and tagged-release automation
 └── docs/               # Preview assets, feature specifications, audits and release acceptance
 ```
@@ -539,9 +539,10 @@ desktop overlays. Always follow the rules of the game you are playing.
 
 ## Current scope and roadmap
 
-Development currently focuses on the core overlay and notebook experience. Planned
-improvements include spoiler-safe layered hints, optional web lookup, and better
-multi-monitor support.
+The notebook, interactive checklists, staged hint cards, screenshot annotations, and
+local image-text recognition are implemented. The next release milestone is
+clean-Windows desktop acceptance and publication of the first verified installer.
+Broader game/display compatibility testing and optional web lookup remain future work.
 
 ## Development
 
