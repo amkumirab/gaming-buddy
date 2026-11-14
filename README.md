@@ -1,7 +1,7 @@
 # Gaming Buddy
 
 <p align="center">
-  <img src="src/gaming_buddy/assets/app-icon.png" alt="Gaming Buddy logo" width="180">
+  <img src="src/gaming_buddy/assets/app-icon.png" alt="Gaming Buddy logo" width="120">
 </p>
 
 Gaming Buddy is a Windows notebook overlay for keeping game clues, build notes, and
@@ -15,11 +15,12 @@ through global shortcuts, the compact panel, or the system tray.
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-41CD52)
 ![License](https://img.shields.io/badge/license-Proprietary-7c5cff)
+[![Windows tests](https://github.com/amkumirab/gaming-buddy/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/amkumirab/gaming-buddy/actions/workflows/tests.yml)
 
-![Gaming Buddy development build with sample cards](docs/ui-preview.png)
+![Gaming Buddy library with tagged sample cards and a Markdown checklist preview](docs/screenshots/library.png)
 
-The screenshot shows the running source application with synthetic demo cards.
-It does not establish installation or real-game compatibility.
+Real Windows UI, fictional sample cards. [Browse all eight screenshots](docs/screenshots/README.md)
+for pins, hints, quick notes, search, screenshot annotations, and keyboard shortcuts.
 
 ## Features
 
@@ -91,6 +92,18 @@ profiles and saved layouts keep each game's cards organized.
 - No code injection and no game-memory access
 
 </details>
+
+## See it in action
+
+Keep a checklist beside your game, or open the compact panel to save a clue without
+opening the full library. Hint cards reveal only the next stage when requested.
+
+| Quick notes | Pinned Markdown and checklists |
+| --- | --- |
+| ![Compact panel with Capture, Quick note, Find, Save, and Pin note controls](docs/screenshots/quick-panel.png) | ![Pinned note with headings, a door code, and checklist progress](docs/screenshots/pinned-note.png) |
+
+[Screenshot gallery and capture details](docs/screenshots/README.md). These source-application
+screenshots demonstrate the interface; installed-app and real-game acceptance are recorded separately.
 
 ## Shortcuts
 
