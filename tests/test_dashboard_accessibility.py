@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QRect, QSettings
 from PySide6.QtWidgets import QApplication, QPushButton
 
 import gaming_buddy.dashboard as dashboard_module
@@ -91,6 +92,31 @@ def test_full_panel_can_fit_a_640_pixel_workspace_without_losing_navigation(
             application.processEvents()
             assert dashboard.main_tabs.currentWidget().isVisible()
         assert dashboard.card_list.height() >= 100
+        assert dashboard.shortcut_footer.isVisible()
+    finally:
+        _close_dashboard(store, dashboard)
+
+
+def test_dashboard_keeps_its_frame_inside_a_short_work_area(
+    application: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, dashboard = _dashboard(tmp_path, monkeypatch)
+    try:
+        dashboard.setStyleSheet(STYLESHEET)
+        screen = dashboard.screen().availableGeometry()
+        work_area = QRect(screen.x(), screen.y(), min(960, screen.width()), 520)
+        monkeypatch.setattr(
+            dashboard, "screen", lambda: SimpleNamespace(availableGeometry=lambda: work_area)
+        )
+        dashboard.resize(830, 900)
+        dashboard.show()
+        application.processEvents()
+
+        assert work_area.contains(dashboard.frameGeometry())
+        for index in range(3):
+            dashboard.main_tabs.setCurrentIndex(index)
+            application.processEvents()
+            assert dashboard.main_tabs.currentWidget().isVisible()
         assert dashboard.shortcut_footer.isVisible()
     finally:
         _close_dashboard(store, dashboard)

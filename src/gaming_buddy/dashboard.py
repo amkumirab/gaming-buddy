@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     QItemSelectionModel,
+    QObject,
     QProcess,
     QSettings,
     QSignalBlocker,
@@ -31,6 +32,8 @@ from PySide6.QtGui import (
     QKeyEvent,
     QKeySequence,
     QPixmap,
+    QScreen,
+    QShowEvent,
 )
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -152,6 +155,8 @@ from gaming_buddy.workspace_backup import (
 )
 from gaming_buddy.workspace_presets import PresetPinLayout, WorkspacePreset
 
+PANEL_MINIMUM_SIZE = QSize(430, 560)
+
 
 class Dashboard(QMainWindow):
     request_quit = Signal()
@@ -231,9 +236,14 @@ class Dashboard(QMainWindow):
         self.undo_timer = QTimer(self)
         self.undo_timer.setSingleShot(True)
         self.undo_timer.timeout.connect(self._hide_undo)
+        self._screen_changed_connection = None
+        self._work_area_connection = None
+        self._work_area_timer = QTimer(self)
+        self._work_area_timer.setSingleShot(True)
+        self._work_area_timer.timeout.connect(self._fit_to_work_area)
 
         self.setWindowTitle("Gaming Buddy")
-        self.setMinimumSize(430, 560)
+        self.setMinimumSize(PANEL_MINIMUM_SIZE)
         self.resize(830, 900)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setAcceptDrops(True)
@@ -3847,6 +3857,53 @@ class Dashboard(QMainWindow):
                 event.accept()
                 return
         super().keyPressEvent(event)
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        window = self.windowHandle()
+        if window is not None and self._screen_changed_connection is None:
+            self._screen_changed_connection = window.screenChanged.connect(self._watch_work_area)
+            self._watch_work_area(window.screen())
+        else:
+            self._schedule_work_area_fit()
+
+    def _watch_work_area(self, screen: QScreen | None) -> None:
+        if self._work_area_connection is not None:
+            QObject.disconnect(self._work_area_connection)
+        self._work_area_connection = (
+            screen.availableGeometryChanged.connect(self._schedule_work_area_fit)
+            if screen is not None else None
+        )
+        self._schedule_work_area_fit()
+
+    def _schedule_work_area_fit(self) -> None:
+        # Read the frame after Qt has applied the native decoration and DPI change.
+        self._work_area_timer.start(0)
+
+    def _fit_to_work_area(self) -> None:
+        screen = self.screen()
+        if screen is None or not self.isVisible():
+            return
+        available = screen.availableGeometry()
+        if available.isEmpty():
+            return
+        frame = self.frameGeometry()
+        decorations = frame.size() - self.size()
+        usable_size = (available.size() - decorations).expandedTo(QSize(1, 1))
+        minimum = PANEL_MINIMUM_SIZE.boundedTo(usable_size)
+        if self.minimumSize() != minimum:
+            self.setMinimumSize(minimum)
+        if self.isMinimized() or self.isMaximized() or self.isFullScreen():
+            return
+
+        size = self.size().boundedTo(usable_size)
+        if size != self.size():
+            self.resize(size)
+        frame = self.frameGeometry()
+        left = max(available.left(), min(frame.left(), available.right() - frame.width() + 1))
+        top = max(available.top(), min(frame.top(), available.bottom() - frame.height() + 1))
+        if (left, top) != (frame.left(), frame.top()):
+            self.move(left, top)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.settings.setValue("window_geometry", self.saveGeometry())
