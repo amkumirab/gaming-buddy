@@ -11,6 +11,15 @@ its headings, code and checklist visible in the preview alongside the library.
 
 ![Library with tagged sample cards and Markdown note preview](library.png)
 
+## Library at 200% scaling
+
+The three tabs, shortcut footer, and card preview remain accessible when Windows
+gives the app less room. This capture shows the library on a 1920 × 1080 Windows
+display with process-local Qt scaling set to 200%. The complete window, including
+its title bar, fit inside the available 960 × 540 logical pixels during verification.
+
+![Gaming Buddy library at 200% scaling with a fictional note and checklist](library-high-scaling.png)
+
 ## Saved images and searchable text
 
 An image card keeps the original image, its pixel dimensions and the text saved
@@ -63,6 +72,10 @@ configuration; it does not establish whether a particular game accepts them.
 ![Keyboard shortcut configuration with the default shortcut assignments](keyboard-shortcuts.png)
 
 ## Capture provenance and reproduction
+
+The 200% library screenshot was captured on November 22, 2026 after the dashboard
+geometry fix. It used the same capture script with `QT_SCALE_FACTOR=2`. The eight
+original screenshots were captured as follows.
 
 - Date: 2026-11-14.
 - Application source: `b011a7afc84f2c00323a3a159a0a210f5e118013`, version `0.1.0`.

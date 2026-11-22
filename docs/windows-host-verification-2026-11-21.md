@@ -93,7 +93,12 @@ available logical desktop. Values are logical pixels.
 At 200%, the panel's 560 px minimum client height already exceeds the 540 px
 available height. The source suite's 640 px workspace check also failed at
 that scale because the native window was constrained to 560 px. This
-application sizing issue remains open.
+application sizing issue was reproduced on this build.
+
+On November 22, the [dashboard geometry fix](https://github.com/amkumirab/gaming-buddy/commit/3635fdf318a2c979bc6e7f5b98cad396f857003c)
+was verified on the same Windows host. The frame fit at all four scales, with
+heights of 931, 864, 720, and 540 logical pixels respectively. The native suite
+passed all 566 tests with exit code 0.
 
 This report records host verification. Clean-Windows installation without
 Python and the acceptance of the exact tagged installer remain pending.

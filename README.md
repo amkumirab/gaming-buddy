@@ -19,8 +19,8 @@ through global shortcuts, the compact panel, or the system tray.
 
 ![Gaming Buddy library with tagged sample cards and a Markdown checklist preview](docs/screenshots/library.png)
 
-Real Windows UI, fictional sample cards. [Browse all eight screenshots](docs/screenshots/README.md)
-for pins, hints, quick notes, search, screenshot annotations, and keyboard shortcuts.
+Real Windows UI, fictional sample cards. [Browse the screenshot gallery](docs/screenshots/README.md)
+for pins, hints, quick notes, search, screenshot annotations, and the library at 200% scaling.
 
 ## Features
 
