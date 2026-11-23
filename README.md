@@ -8,9 +8,8 @@ Gaming Buddy is a Windows notebook overlay for keeping game clues, build notes, 
 screenshots within reach while you play. Cards stay on your computer and can be opened
 through global shortcuts, the compact panel, or the system tray.
 
-**Development preview · 0.1.0.** There is no public installer release yet.
-[Run from source](#run-from-source) or follow the
-[development installer instructions](docs/windows-release.md#try-a-development-installer).
+**Windows release · v0.1.0.** [Download the installer and SHA-256 checksum](https://github.com/amkumirab/gaming-buddy/releases/tag/v0.1.0).
+[Run from source](#run-from-source) for local development.
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-41CD52)
@@ -242,20 +241,15 @@ python -m gaming_buddy
 
 ## Install on Windows
 
-Version `0.1.0` is awaiting clean-Windows installation verification. There is currently
-no published installer on the [Releases](https://github.com/amkumirab/gaming-buddy/releases)
-page. Use **Run from source** above until the first official release is available.
-Successful manual [Windows build runs](https://github.com/amkumirab/gaming-buddy/actions/workflows/windows-release.yml)
-provide test artifacts named `gaming-buddy-windows-<run-id>`; downloading Actions artifacts
-requires a GitHub account. These are test builds, not official releases.
-For the download, checksum, and feedback steps, see
-[Try a development installer](docs/windows-release.md#try-a-development-installer).
-Older artifacts do not include later changes to the program or its license; check the
-run's commit and the license shown by that installer before testing.
+Get `Gaming-Buddy-Setup-0.1.0-x64.exe` and its `.sha256` file from the
+[Gaming Buddy v0.1.0 release](https://github.com/amkumirab/gaming-buddy/releases/tag/v0.1.0).
+Verify the download using the [SHA-256 command](docs/windows-release.md#official-publication).
+The exact published installer was tested on Windows 11 x64 under a standard user
+account without Python. See the [v0.1.0 acceptance report](docs/windows-acceptance-v0.1.0.md)
+for the installation results and test coverage.
 
-The planned release assets are `Gaming-Buddy-Setup-0.1.0-x64.exe` and
-`Gaming-Buddy-Setup-0.1.0-x64.exe.sha256`. The installer bundles its runtime and does not
-require Python or administrator access. It creates a Start menu shortcut and
+The installer bundles its runtime and installs for the current Windows account.
+It creates a Start menu shortcut and
 can optionally create a desktop shortcut. Launching the application at the end of setup
 is also optional.
 

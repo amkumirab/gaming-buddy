@@ -2,11 +2,12 @@
 
 ## Current distribution status
 
-Version `0.1.0` has no official release yet. Its synchronized version sources are
-`pyproject.toml`, `src/gaming_buddy/__init__.py`, `packaging/gaming-buddy.iss`, and
-`packaging/version_info.txt`. The first release is pending an interactive test on a
-clean Windows machine without Python. A successful Actions build is a test artifact,
-not evidence that these desktop checks have passed.
+Download the Windows x64 installer and checksum from
+[Gaming Buddy v0.1.0](https://github.com/amkumirab/gaming-buddy/releases/tag/v0.1.0).
+See the [v0.1.0 acceptance report](windows-acceptance-v0.1.0.md) for the exact package
+and clean Windows 11 test results. Version sources are `pyproject.toml`,
+`src/gaming_buddy/__init__.py`, `packaging/gaming-buddy.iss`, and
+`packaging/version_info.txt`.
 
 ## Try a development installer
 
