@@ -101,6 +101,7 @@ jobs:
           }
           $assets = @($installer, $checksum)
           gh release create $env:GITHUB_REF_NAME @assets `
+            --repo $env:GITHUB_REPOSITORY `
             --verify-tag `
             --draft `
             --generate-notes `
